@@ -1,0 +1,56 @@
+# Environment
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+*.env
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+cap_portal.db
+
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# Storage
+storage/uploads/*
+!storage/uploads/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+postgres_data/
