@@ -273,7 +273,7 @@ def parse_single_txt(txt_path: Path, cap_round: int):
 
 
 _COL_REGEX = re.compile(r"^(\d{5})\s*-\s*(.+)")
-_CRS_REGEX = re.compile(r"^(\d{10})\s*-\s*(.+)")
+_CRS_REGEX = re.compile(r"^(\d{9,11}[A-Z]?)\s*-\s*(.+)")
 
 
 def _parse_pdf_page_worker(args):
@@ -295,11 +295,6 @@ def _parse_pdf_page_worker(args):
 
     blocks = page.get_text("blocks")
     page_lines = []
-    current_college_code = None
-    current_college_name = None
-    current_course_code = None
-    current_course_name = None
-    current_status = None
 
     for b in blocks:
         b_top = b[1]
@@ -309,25 +304,6 @@ def _parse_pdf_page_worker(args):
                 continue
             page_lines.append((b_top, line_str))
 
-            if not current_college_code:
-                col_match = _COL_REGEX.match(line_str)
-                if col_match:
-                    current_college_code = col_match.group(1)
-                    current_college_name = col_match.group(2)
-            if not current_course_code:
-                crs_match = _CRS_REGEX.match(line_str)
-                if crs_match:
-                    current_course_code = crs_match.group(1)
-                    current_course_name = crs_match.group(2)
-            if not current_status and line_str.startswith("Status:"):
-                current_status = line_str.replace("Status:", "").strip()
-
-    status_lower = (current_status or "").lower()
-    if "government" in status_lower or "govt" in status_lower or "university department" in status_lower:
-        governance_type = "Government"
-    else:
-        governance_type = "Private"
-
     table_list = sorted(tabs.tables, key=lambda t: t.bbox[1])
     prev_table_bottom = 0
     rows = []
@@ -336,8 +312,24 @@ def _parse_pdf_page_worker(args):
         tab_top = tab.bbox[1]
         tab_bottom = tab.bbox[3]
 
+        current_college_code, current_college_name = None, None
+        current_course_code, current_course_name = None, None
+        current_status = None
         quota_title = None
+
         for b_top, ls in page_lines:
+            if b_top < tab_top:
+                col_match = _COL_REGEX.match(ls)
+                if col_match:
+                    current_college_code, current_college_name = col_match.group(1), col_match.group(2)
+                crs_match = _CRS_REGEX.match(ls)
+                if crs_match:
+                    current_course_code, current_course_name = crs_match.group(1), crs_match.group(2)
+                if ls.startswith("Status:"):
+                    st_val = ls.replace("Status:", "").strip()
+                    if st_val:
+                        current_status = st_val
+
             if prev_table_bottom <= b_top < tab_top:
                 if (
                     ls
@@ -354,13 +346,26 @@ def _parse_pdf_page_worker(args):
                 ):
                     quota_title = ls
 
+        status_lower = f"{current_college_name or ''} {current_status or ''}".lower()
+        if "government" in status_lower or "govt" in status_lower or "university department" in status_lower:
+            governance_type = "Government"
+        else:
+            governance_type = "Private"
+
         df = tab.extract()
         if not df or len(df) < 2:
             prev_table_bottom = tab_bottom
             continue
 
         header = [c.replace("\n", "").strip() if c else "" for c in df[0]]
-        if not header or header[0] != "Stage":
+        is_cutoff_table = False
+        if header:
+            if header[0] == "Stage":
+                is_cutoff_table = True
+            elif len(header) > 1 and any(cat in (header[1] or "") for cat in ["OPEN", "SC", "ST", "OBC", "VJ", "NT", "EWS", "TFWS", "SEBC"]):
+                is_cutoff_table = True
+
+        if not is_cutoff_table:
             prev_table_bottom = tab_bottom
             continue
 
@@ -431,10 +436,18 @@ def parse_single_pdf(pdf_path: Path, cap_round: int):
     return rows_to_insert
 
 
-def parse_all_cap_files(base_dir: str = ".", db_path: str = "cutoff.db"):
-    """Discovers all CAP PDF (or text) files and populates multi-round cutoff.db."""
+def parse_all_cap_files(base_dir: str = ".", db_path: str = "cutoff.db", target_cap_round: int | None = None):
+    """Discovers CAP PDF (or text) files and populates multi-round cutoff.db in parallel."""
+    import pymupdf
+    import os
+    from concurrent.futures import ProcessPoolExecutor
+
     dir_path = Path(base_dir)
     pdf_files = sorted(list(dir_path.glob("*CAP*.pdf")))
+
+    if target_cap_round is not None:
+        pdf_files = [f for f in pdf_files if infer_cap_round(f) == target_cap_round]
+        print(f"Filtering to CAP Round {target_cap_round} only: {[f.name for f in pdf_files]}")
 
     conn = create_database(db_path)
     cursor = conn.cursor()
@@ -443,11 +456,30 @@ def parse_all_cap_files(base_dir: str = ".", db_path: str = "cutoff.db"):
     round_counts = {}
 
     if pdf_files:
+        all_tasks = []
         for pdf_file in pdf_files:
             round_num = infer_cap_round(pdf_file)
-            print(f"Parsing [CAP Round {round_num}] directly from PDF: {pdf_file.name}...")
-            rows = parse_single_pdf(pdf_file, round_num)
+            doc = pymupdf.open(str(pdf_file))
+            num_pages = len(doc)
+            doc.close()
+            for p in range(num_pages):
+                all_tasks.append((str(pdf_file), p, round_num))
 
+        workers = min(os.cpu_count() or 4, 8)
+        print(f"Parsing {len(all_tasks)} pages across {len(pdf_files)} CAP PDF(s) using {workers} parallel processes...")
+
+        round_rows = {}
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            results = executor.map(_parse_pdf_page_worker, all_tasks, chunksize=25)
+            for res in results:
+                for row in res:
+                    r_num = row[0]
+                    if r_num not in round_rows:
+                        round_rows[r_num] = []
+                    round_rows[r_num].append(row)
+
+        for round_num in sorted(round_rows.keys()):
+            rows = round_rows[round_num]
             cursor.executemany("""
                 INSERT INTO cutoff_records (
                     cap_round, page_number, college_code, college_name, district, course_code, course_name,
@@ -455,15 +487,16 @@ def parse_all_cap_files(base_dir: str = ".", db_path: str = "cutoff.db"):
                     category, seat_category, stage, merit_rank, percentile
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, rows)
-
             conn.commit()
             round_counts[round_num] = len(rows)
             total_records += len(rows)
             print(f"  Inserted {len(rows):,} records for CAP Round {round_num}")
     else:
         txt_files = sorted(list(dir_path.glob("*CAP*.txt")))
+        if target_cap_round is not None:
+            txt_files = [f for f in txt_files if infer_cap_round(f) == target_cap_round]
         if not txt_files:
-            print("No CAP PDF or text files found to parse!")
+            print("No matching CAP PDF or text files found to parse!")
             return
         for txt_file in txt_files:
             round_num = infer_cap_round(txt_file)
@@ -496,4 +529,6 @@ def parse_all_cap_files(base_dir: str = ".", db_path: str = "cutoff.db"):
 
 if __name__ == "__main__":
     db_file = "cutoff.db"
-    parse_all_cap_files(".", db_file)
+    target_round = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else None
+    parse_all_cap_files(".", db_file, target_cap_round=target_round)
+

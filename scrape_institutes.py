@@ -269,7 +269,14 @@ def run_scraping_and_normalization(db_path: str):
         UPDATE cutoff_records
         SET district = (SELECT district FROM institutes WHERE institutes.dte_code = cutoff_records.college_code),
             status = (SELECT status FROM institutes WHERE institutes.dte_code = cutoff_records.college_code),
-            is_autonomous = (SELECT autonomy_status FROM institutes WHERE institutes.dte_code = cutoff_records.college_code)
+            is_autonomous = (SELECT autonomy_status FROM institutes WHERE institutes.dte_code = cutoff_records.college_code),
+            governance_type = CASE 
+                WHEN (SELECT status FROM institutes WHERE institutes.dte_code = cutoff_records.college_code) LIKE '%Government%' 
+                  OR (SELECT status FROM institutes WHERE institutes.dte_code = cutoff_records.college_code) LIKE '%Govt%' 
+                  OR (SELECT status FROM institutes WHERE institutes.dte_code = cutoff_records.college_code) LIKE '%University%' 
+                THEN 'Government' 
+                ELSE 'Private' 
+            END
         WHERE EXISTS (SELECT 1 FROM institutes WHERE institutes.dte_code = cutoff_records.college_code);
     """)
     conn.commit()

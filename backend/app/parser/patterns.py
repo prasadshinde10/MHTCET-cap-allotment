@@ -14,9 +14,9 @@ import re
 # Example: "01002 - Government College of Engineering, Amravati"
 COLLEGE_PATTERN = re.compile(r'^\s*(\d{5})\s*-\s*(.+?)\s*$')
 
-# Course header: 10-digit code + " - " + course name
-# Example: "0100219110 - Civil Engineering"
-COURSE_PATTERN = re.compile(r'^\s*(\d{10})\s*-\s*(.+?)\s*$')
+# Course header: 10-digit code + optional letter suffix + " - " + course name
+# Example: "0100219110 - Civil Engineering" or "0302524270U - Computer Science"
+COURSE_PATTERN = re.compile(r'^\s*(\d{9,11}[A-Z]?)\s*-\s*(.+?)\s*$')
 
 # Seat section patterns — these can be quite varied
 # Examples from actual PDFs:
