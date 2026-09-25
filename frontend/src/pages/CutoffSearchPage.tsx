@@ -99,6 +99,34 @@ export const CutoffSearchPage: React.FC = () => {
   const [tableFilter, setTableFilter] = useState('');
   const [sortBy, setSortBy] = useState<'percentile_desc' | 'percentile_asc' | 'college' | 'course'>('percentile_desc');
 
+  // Synchronize state when URL query parameters change (e.g. from Search History navigation)
+  useEffect(() => {
+    const courseParam = searchParams.get('course');
+    const typeParam = searchParams.get('collegeType');
+    const catParam = searchParams.get('category');
+    const resParam = searchParams.get('reservation');
+    const genParam = searchParams.get('gender');
+    const distParam = searchParams.get('district');
+    const yearParam = searchParams.get('year');
+    const roundParam = searchParams.get('round');
+
+    const hasAnyParam = Boolean(
+      courseParam || typeParam || catParam || resParam || genParam || distParam || yearParam || roundParam
+    );
+
+    if (hasAnyParam) {
+      if (courseParam !== null) setSelectedCourse(courseParam);
+      if (typeParam !== null) setCollegeType(typeParam);
+      if (catParam !== null) setCasteCategory(catParam);
+      if (resParam !== null) setReservationType(resParam);
+      if (genParam !== null) setGender(genParam);
+      if (distParam !== null) setDistrict(distParam);
+      if (yearParam !== null) setCapYear(yearParam);
+      if (roundParam !== null) setCapRound(roundParam);
+      setHasSearched(true);
+    }
+  }, [searchParams]);
+
   // Load dynamic filter options (courses, years, rounds, districts) from API
   const { data: filterOptions, isLoading: isFilterOptionsLoading } = useQuery({
     queryKey: ['filterOptions'],
