@@ -120,9 +120,10 @@ class PDFImporter:
             for page_num in range(1, page_count + 1):
                 self.state.page_number = page_num
                 text = loader.get_page_text(page_num)
+                page_obj = loader.document[page_num - 1] if loader.document is not None else None
 
                 try:
-                    self._process_page(page_num, text)
+                    self._process_page(page_num, text, page_obj)
                 except Exception as e:
                     logger.error(f"Error processing page {page_num}: {e}")
                     self._record_error(
@@ -195,134 +196,128 @@ class PDFImporter:
         except Exception as e:
             logger.error(f"Error syncing colleges and courses: {e}")
 
-    def _process_page(self, page_number: int, text: str):
-        """Process a single page of the PDF."""
-        if not text or not text.strip():
+    def _process_page(self, page_number: int, text: str, page_obj: Any = None):
+        """Process a single page of the PDF using PyMuPDF table grid extraction."""
+        if not text or "Stage" not in text:
             return
 
-        lines = text.split('\n')
+        import re
 
-        for line in lines:
-            self._process_line(line, page_number)
-
-    def _process_line(self, line: str, page_number: int):
-        """Process a single line, updating parser state and extracting records."""
-        raw_line = line
-        stripped = line.strip()
-
-        # Skip empty lines
-        if not stripped:
-            return
-
-        # Skip page headers
-        for pattern in PAGE_HEADER_PATTERNS:
-            if pattern.match(stripped):
+        # If page_obj (PyMuPDF page) is provided, use find_tables for exact grid extraction
+        if page_obj is not None and hasattr(page_obj, "find_tables"):
+            tabs = page_obj.find_tables()
+            if not tabs.tables:
                 return
 
-        # Skip status lines
-        if STATUS_PATTERN.match(stripped):
-            return
-        if STATUS_LINE_PATTERN.match(stripped):
-            return
+            blocks = page_obj.get_text("blocks")
+            page_lines = []
 
-        # Skip legend
-        if LEGEND_PATTERN.match(stripped):
-            return
+            for b in blocks:
+                b_top = b[1]
+                for line in b[4].splitlines():
+                    line_str = line.strip()
+                    if not line_str:
+                        continue
+                    page_lines.append((b_top, line_str))
 
-        # Skip standalone page numbers at the bottom
-        if PAGE_NUMBER_PATTERN.match(stripped) and len(stripped) <= 4:
-            # Might be a page number, but also could be a merit number.
-            # Only skip if we're not in a cutoff block
-            if self._phase != self.PHASE_IN_CUTOFF_BLOCK:
-                return
+                    college_match = CollegeParser.parse_line(line_str)
+                    if college_match:
+                        self.state.set_college(college_match[0], college_match[1])
+                        self.colleges_map[college_match[0]] = college_match[1]
 
-        # Check for "Stage" end marker — this ends a cutoff block
-        if STAGE_LABEL_PATTERN.match(line):
-            if self._cutoff_block:
-                self._cutoff_block.feed_line(line)
-                self._flush_cutoff_block(page_number)
-            self._phase = self.PHASE_IDLE
-            return
+                    course_match = CourseParser.parse_line(line_str)
+                    if course_match:
+                        self.state.set_course(course_match[0], course_match[1])
+                        self.courses_map[course_match[0]] = (
+                            course_match[1],
+                            self.state.current_college_code or "",
+                        )
 
-        # Check for college header
-        college_match = CollegeParser.parse_line(stripped)
-        if college_match:
-            self._flush_cutoff_block(page_number)
-            self.state.set_college(college_match[0], college_match[1])
-            self.colleges_map[college_match[0]] = college_match[1]
-            self._phase = self.PHASE_IDLE
-            self._collecting_categories = []
-            return
+            table_list = sorted(tabs.tables, key=lambda t: t.bbox[1])
+            prev_table_bottom = 0
 
-        # Check for course header
-        course_match = CourseParser.parse_line(stripped)
-        if course_match:
-            self._flush_cutoff_block(page_number)
-            self.state.set_course(course_match[0], course_match[1])
-            self.courses_map[course_match[0]] = (course_match[1], self.state.current_college_code or "")
-            self._phase = self.PHASE_IDLE
-            self._collecting_categories = []
-            return
+            for tab in table_list:
+                tab_top = tab.bbox[1]
+                tab_bottom = tab.bbox[3]
 
-        # Check for seat section
-        section_match = SectionParser.parse_line(stripped)
-        if section_match:
-            self._flush_cutoff_block(page_number)
-            self.state.set_section(section_match[0], section_match[1])
-            self._phase = self.PHASE_EXPECTING_CATEGORIES
-            self._collecting_categories = []
-            return
+                quota_title = None
+                for b_top, ls in page_lines:
+                    if prev_table_bottom <= b_top < tab_top:
+                        section_match = SectionParser.parse_line(ls)
+                        if section_match:
+                            quota_title = section_match[1]
 
-        # If we're expecting categories, try to collect them
-        if self._phase == self.PHASE_EXPECTING_CATEGORIES:
-            cat_code = CategoryParser.parse_line(stripped)
-            if cat_code:
-                self._collecting_categories.append(cat_code)
-                return
-            else:
-                # Not a category code — might be a stage line starting cutoff data
-                if self._collecting_categories:
-                    self.state.set_categories(self._collecting_categories)
-                    self._start_cutoff_block()
+                if quota_title:
+                    self.state.set_section("UNKNOWN", quota_title)
 
-        # If we're in a cutoff block, feed lines to the block parser
-        if self._phase == self.PHASE_IN_CUTOFF_BLOCK and self._cutoff_block:
-            # Check if this line starts a new section/course/college
-            # (which would mean the "Stage" end marker was missing)
-            stage_match = STAGE_PATTERN.match(line)
-            merit_match = MERIT_NUMBER_PATTERN.match(stripped)
-            perc_match = PERCENTILE_PATTERN.match(stripped)
+                df = tab.extract()
+                if not df or len(df) < 2:
+                    prev_table_bottom = tab_bottom
+                    continue
 
-            if stage_match or merit_match or perc_match:
-                self._cutoff_block.feed_line(line)
-                return
+                header = [c.replace("\n", "").strip() if c else "" for c in df[0]]
+                if not header or header[0] != "Stage":
+                    prev_table_bottom = tab_bottom
+                    continue
 
-            # If line doesn't match cutoff data, the block might be over
-            # Try to see if it's a new section or category
-            cat_code = CategoryParser.parse_line(stripped)
-            if cat_code:
-                # New categories starting — flush current block
-                self._flush_cutoff_block(page_number)
-                self._phase = self.PHASE_EXPECTING_CATEGORIES
-                self._collecting_categories = [cat_code]
-                return
+                categories = header[1:]
+                self.state.set_categories(categories)
 
-            section_re_match = SectionParser.parse_line(stripped)
-            if section_re_match:
-                self._flush_cutoff_block(page_number)
-                self.state.set_section(section_re_match[0], section_re_match[1])
-                self._phase = self.PHASE_EXPECTING_CATEGORIES
-                self._collecting_categories = []
-                return
+                for row in df[1:]:
+                    stage_str = row[0].replace("\n", "").strip()
+                    cell_values = row[1:]
 
-        # If we were collecting categories and hit a stage line, start cutoff block
-        if self._phase == self.PHASE_EXPECTING_CATEGORIES:
-            stage_match = STAGE_PATTERN.match(line)
-            if stage_match and self._collecting_categories:
-                self.state.set_categories(self._collecting_categories)
-                self._start_cutoff_block()
-                self._cutoff_block.feed_line(line)
-                return
+                    for cat, cell in zip(categories, cell_values):
+                        cell_clean = cell.strip() if cell else ""
+                        if not cell_clean:
+                            continue
+                        parts = cell_clean.split("\n")
+                        rank_str = parts[0].strip()
+                        perc_str = parts[1].strip() if len(parts) >= 2 else ""
+                        perc_str = perc_str.replace("(", "").replace(")", "").strip()
+
+                        try:
+                            rank = int(rank_str)
+                            perc = Decimal(perc_str) if perc_str else None
+
+                            norm = self.normalizer.normalize(cat)
+
+                            record_dict = {
+                                "import_batch_id": self.batch_id,
+                                "cap_round_id": self.cap_round_id,
+                                "year": self.year,
+                                "college_code": self.state.current_college_code,
+                                "course_code": self.state.current_course_code,
+                                "seat_section": self.state.current_seat_section or "UNKNOWN",
+                                "seat_section_raw": self.state.current_seat_section_raw,
+                                "category_code": cat,
+                                "gender": norm.get("gender"),
+                                "seat_category": norm.get("seat_category"),
+                                "seat_location": norm.get("seat_location"),
+                                "stage": stage_str,
+                                "merit_number": rank,
+                                "percentile": perc,
+                                "source_page": page_number,
+                                "source_pdf": self.file_path,
+                            }
+
+                            is_valid, errors = RecordValidator.validate_cutoff(record_dict)
+                            if is_valid:
+                                self.staging_buffer.append(record_dict)
+                                self.result.records_created += 1
+                            else:
+                                self._record_error(
+                                    page_number,
+                                    "VALIDATION_ERROR",
+                                    "WARNING",
+                                    f"{cat} {stage_str} {rank} ({perc})",
+                                    f"Validation errors: {', '.join(errors)}",
+                                )
+                                self.result.records_rejected += 1
+                                self.result.warnings += 1
+                        except ValueError:
+                            pass
+                prev_table_bottom = tab_bottom
 
     def _start_cutoff_block(self):
         """Initialize a new cutoff block parser."""
