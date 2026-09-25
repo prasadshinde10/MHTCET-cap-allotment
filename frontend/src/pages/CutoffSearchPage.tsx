@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getCutoffs, Cutoff } from '../api/cutoffs';
 import { getFilterOptions } from '../api/analysis';
-import { getColleges } from '../api/colleges';
 import { 
   Search, RotateCcw, Building2, BookOpen, MapPin, 
   Sparkles, Download, LayoutGrid, Table as TableIcon,
@@ -99,7 +98,6 @@ export const CutoffSearchPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [tableFilter, setTableFilter] = useState('');
   const [sortBy, setSortBy] = useState<'percentile_desc' | 'percentile_asc' | 'college' | 'course'>('percentile_desc');
-  const [currentPage, setCurrentPage] = useState<number>(1);
 
   // Load dynamic filter options (courses, years, rounds, districts) from API
   const { data: filterOptions, isLoading: isFilterOptionsLoading } = useQuery({
@@ -108,27 +106,20 @@ export const CutoffSearchPage: React.FC = () => {
     staleTime: 300000,
   });
 
-  // Load colleges directory for metadata enrichment (autonomy, full district names)
-  const { data: collegesResponse } = useQuery({
-    queryKey: ['allCollegesMetadata'],
-    queryFn: () => getColleges({ page_size: 100 }),
-    staleTime: 300000,
-  });
-
-  // College metadata lookup map: code -> details
+  // College metadata lookup map: code -> details (uses filterOptions which returns ALL colleges)
   const collegeMetaMap = useMemo(() => {
     const map = new Map<string, { type: string; district?: string; city?: string }>();
-    if (collegesResponse?.items) {
-      for (const col of collegesResponse.items) {
+    if (filterOptions?.colleges) {
+      for (const col of filterOptions.colleges) {
         map.set(col.college_code, {
-          type: col.college_type || 'Unknown',
+          type: col.college_type || 'Non-Autonomous',
           district: col.district || undefined,
           city: col.city || undefined,
         });
       }
     }
     return map;
-  }, [collegesResponse]);
+  }, [filterOptions]);
 
   // Build searchable course options
   const courseOptions: SearchableOption[] = useMemo(() => {
@@ -250,94 +241,142 @@ export const CutoffSearchPage: React.FC = () => {
   };
 
   // Query Cutoffs
-  const { data: cutoffsData, isLoading: isSearching, isError, error, refetch } = useQuery({
-    queryKey: [
-      'cutoffsSearch', 
-      capYear, 
-      capRound, 
-      selectedCourse, 
-      computedCategoryQuery, 
-      gender, 
-      computedDistrictQuery,
-      currentPage
-    ],
-    queryFn: () => getCutoffs({
-      page: currentPage,
-      page_size: 100, // Validated max 100 by backend
-      year: capYear ? Number(capYear) : undefined,
-      round_number: capRound ? Number(capRound) : undefined,
-      course: selectedCourse || undefined,
-      category_code: computedCategoryQuery,
-      gender: gender || undefined,
-      city_district: computedDistrictQuery,
-      is_deleted: false,
-    }),
-    enabled: hasSearched,
+  // Determine which rounds to query
+  const roundsToQuery = useMemo(() => {
+    if (capRound) return [Number(capRound)];
+    return [1, 2, 3, 4];
+  }, [capRound]);
+
+  // Build common query params (shared across all round queries)
+  const commonQueryParams = useMemo(() => ({
+    page: 1,
+    page_size: 500,
+    year: capYear ? Number(capYear) : undefined,
+    course: selectedCourse || undefined,
+    category_code: computedCategoryQuery,
+    gender: gender || undefined,
+    city_district: computedDistrictQuery,
+    is_deleted: false as const,
+  }), [capYear, selectedCourse, computedCategoryQuery, gender, computedDistrictQuery]);
+
+  // Fetch Round 1
+  const { data: round1Data, isLoading: r1Loading, isError: r1Error, error: r1Err, refetch: r1Refetch } = useQuery({
+    queryKey: ['cutoffsR1', commonQueryParams],
+    queryFn: () => getCutoffs({ ...commonQueryParams, round_number: 1 }),
+    enabled: hasSearched && roundsToQuery.includes(1),
   });
 
-  // Group cutoffs by College + Course + Category + Seat Section
-  const groupedRows: GroupedCutoffRow[] = useMemo(() => {
-    if (!cutoffsData?.items) return [];
+  // Fetch Round 2
+  const { data: round2Data, isLoading: r2Loading, isError: r2Error, error: r2Err, refetch: r2Refetch } = useQuery({
+    queryKey: ['cutoffsR2', commonQueryParams],
+    queryFn: () => getCutoffs({ ...commonQueryParams, round_number: 2 }),
+    enabled: hasSearched && roundsToQuery.includes(2),
+  });
 
+  // Fetch Round 3
+  const { data: round3Data, isLoading: r3Loading, isError: r3Error, error: r3Err, refetch: r3Refetch } = useQuery({
+    queryKey: ['cutoffsR3', commonQueryParams],
+    queryFn: () => getCutoffs({ ...commonQueryParams, round_number: 3 }),
+    enabled: hasSearched && roundsToQuery.includes(3),
+  });
+
+  // Fetch Round 4
+  const { data: round4Data, isLoading: r4Loading, isError: r4Error, error: r4Err, refetch: r4Refetch } = useQuery({
+    queryKey: ['cutoffsR4', commonQueryParams],
+    queryFn: () => getCutoffs({ ...commonQueryParams, round_number: 4 }),
+    enabled: hasSearched && roundsToQuery.includes(4),
+  });
+
+  // Combined loading / error state
+  const isSearching = r1Loading || r2Loading || r3Loading || r4Loading;
+  const isError = r1Error || r2Error || r3Error || r4Error;
+  const error = r1Err || r2Err || r3Err || r4Err;
+  const refetch = () => { r1Refetch(); r2Refetch(); r3Refetch(); r4Refetch(); };
+
+  // Total counts info for display
+  const totalInfo = useMemo(() => {
+    const r1Total = round1Data?.total ?? 0;
+    const r2Total = round2Data?.total ?? 0;
+    const r3Total = round3Data?.total ?? 0;
+    const r4Total = round4Data?.total ?? 0;
+    return {
+      total: r1Total + r2Total + r3Total + r4Total,
+      r1Truncated: r1Total > 500,
+      r2Truncated: r2Total > 500,
+      r3Truncated: r3Total > 500,
+      r4Truncated: r4Total > 500,
+      anyTruncated: r1Total > 500 || r2Total > 500 || r3Total > 500 || r4Total > 500,
+    };
+  }, [round1Data, round2Data, round3Data, round4Data]);
+
+  // Group cutoffs from ALL rounds by College + Course + Category + Seat Section
+  const groupedRows: GroupedCutoffRow[] = useMemo(() => {
     const map = new Map<string, GroupedCutoffRow>();
 
-    cutoffsData.items.forEach((item: Cutoff) => {
-      // Determine college type
-      const colMeta = item.college_code ? collegeMetaMap.get(item.college_code) : undefined;
-      let effectiveType = colMeta?.type || 'Non-Autonomous';
-      if (item.college_name?.toLowerCase().includes('autonomous')) {
-        effectiveType = 'Autonomous';
-      }
-
-      // Filter by college type if specified
-      if (collegeType) {
-        if (collegeType === 'Autonomous' && !effectiveType.toLowerCase().includes('autonomous')) {
-          return;
+    // Helper: process items from a specific round
+    const processItems = (items: Cutoff[] | undefined, roundNum: 1 | 2 | 3 | 4) => {
+      if (!items) return;
+      items.forEach((item: Cutoff) => {
+        // Determine college type
+        const colMeta = item.college_code ? collegeMetaMap.get(item.college_code) : undefined;
+        let effectiveType = colMeta?.type || 'Non-Autonomous';
+        if (item.college_name?.toLowerCase().includes('autonomous')) {
+          effectiveType = 'Autonomous';
         }
-        if (collegeType === 'Non-Autonomous' && effectiveType.toLowerCase().includes('autonomous')) {
-          return;
+
+        // Filter by college type if specified
+        if (collegeType) {
+          if (collegeType === 'Autonomous' && !effectiveType.toLowerCase().includes('autonomous')) {
+            return;
+          }
+          if (collegeType === 'Non-Autonomous' && effectiveType.toLowerCase().includes('autonomous')) {
+            return;
+          }
         }
-      }
 
-      const collegeCode = item.college_code || 'N/A';
-      const courseCode = item.course_code || 'N/A';
-      const categoryCode = item.category_code || 'N/A';
-      const seatSection = item.seat_section || 'STATE_LEVEL';
-      const stage = item.stage || 'I';
+        const collegeCode = item.college_code || 'N/A';
+        const courseCode = item.course_code || 'N/A';
+        const categoryCode = item.category_code || 'N/A';
+        const seatSection = item.seat_section || 'STATE_LEVEL';
+        const stage = item.stage || 'I';
 
-      const key = `${collegeCode}_${courseCode}_${categoryCode}_${seatSection}_${stage}`;
+        const key = `${collegeCode}_${courseCode}_${categoryCode}_${seatSection}_${stage}`;
 
-      if (!map.has(key)) {
-        map.set(key, {
-          key,
-          collegeCode,
-          collegeName: item.college_name || 'Unknown College',
-          district: formatDistrictDisplay(item.district || item.city || colMeta?.district || colMeta?.city || 'Maharashtra'),
-          collegeType: effectiveType,
-          courseCode,
-          courseName: item.course_name || 'Engineering Course',
-          categoryCode,
-          seatSection,
-          gender: item.gender,
-          stage,
-          rounds: {
-            1: null,
-            2: null,
-            3: null,
-            4: null,
-          },
-        });
-      }
+        if (!map.has(key)) {
+          map.set(key, {
+            key,
+            collegeCode,
+            collegeName: item.college_name || 'Unknown College',
+            district: formatDistrictDisplay(item.district || item.city || colMeta?.district || colMeta?.city || 'Maharashtra'),
+            collegeType: effectiveType,
+            courseCode,
+            courseName: item.course_name || 'Engineering Course',
+            categoryCode,
+            seatSection,
+            gender: item.gender,
+            stage,
+            rounds: {
+              1: null,
+              2: null,
+              3: null,
+              4: null,
+            },
+          });
+        }
 
-      const row = map.get(key)!;
-      const roundNum = item.round_number as 1 | 2 | 3 | 4;
-      if (roundNum && (roundNum === 1 || roundNum === 2 || roundNum === 3 || roundNum === 4)) {
+        const row = map.get(key)!;
         row.rounds[roundNum] = {
           percentile: item.percentile !== undefined && item.percentile !== null ? Number(item.percentile) : undefined,
           meritNumber: item.merit_number !== undefined && item.merit_number !== null ? Number(item.merit_number) : undefined,
         };
-      }
-    });
+      });
+    };
+
+    // Process all round data
+    processItems(round1Data?.items, 1);
+    processItems(round2Data?.items, 2);
+    processItems(round3Data?.items, 3);
+    processItems(round4Data?.items, 4);
 
     const rows = Array.from(map.values());
 
@@ -360,7 +399,7 @@ export const CutoffSearchPage: React.FC = () => {
       // percentile_desc
       return pB - pA;
     });
-  }, [cutoffsData, collegeMetaMap, collegeType, sortBy]);
+  }, [round1Data, round2Data, round3Data, round4Data, collegeMetaMap, collegeType, sortBy]);
 
   // Filter grouped rows by quick search input
   const filteredGroupedRows = useMemo(() => {
@@ -379,7 +418,6 @@ export const CutoffSearchPage: React.FC = () => {
   // Handle Find Colleges
   const handleFindColleges = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    setCurrentPage(1);
     setHasSearched(true);
     refetch();
 
@@ -410,7 +448,6 @@ export const CutoffSearchPage: React.FC = () => {
     setCapYear(filterOptions?.years?.[0]?.toString() || '2026');
     setCapRound('');
     setTableFilter('');
-    setCurrentPage(1);
     setSearchParams({});
     toast.success('Filters reset to default');
   };
@@ -1097,36 +1134,19 @@ export const CutoffSearchPage: React.FC = () => {
           </div>
         )}
 
-        {/* Pagination Bar */}
-        {hasSearched && !isSearching && !isError && cutoffsData && cutoffsData.total_pages > 1 && (
+        {/* Results Info & Truncation Warning */}
+        {hasSearched && !isSearching && !isError && filteredGroupedRows.length > 0 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl px-5 py-3.5 shadow-sm">
             <div className="text-xs text-gray-500">
-              Showing page <span className="font-semibold text-gray-800">{cutoffsData.page}</span> of{' '}
-              <span className="font-semibold text-gray-800">{cutoffsData.total_pages}</span> ({cutoffsData.total} total cutoffs)
+              Showing <span className="font-semibold text-gray-800">{filteredGroupedRows.length}</span> grouped offerings from{' '}
+              <span className="font-semibold text-gray-800">{totalInfo.total.toLocaleString()}</span> total cutoff records
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="text-xs"
-              >
-                Previous
-              </Button>
-              <span className="text-xs font-mono font-medium text-gray-700 px-2">
-                {currentPage} / {cutoffsData.total_pages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage >= cutoffsData.total_pages}
-                onClick={() => setCurrentPage((p) => Math.min(cutoffsData.total_pages, p + 1))}
-                className="text-xs"
-              >
-                Next
-              </Button>
-            </div>
+            {totalInfo.anyTruncated && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>Some results are truncated. Use more specific filters (branch, category, district) to see all data.</span>
+              </div>
+            )}
           </div>
         )}
       </div>

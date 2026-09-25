@@ -3,6 +3,7 @@ export interface CollegeOption {
   college_name: string;
   city?: string;
   district?: string;
+  college_type?: string;
 }
 
 export interface CourseOption {

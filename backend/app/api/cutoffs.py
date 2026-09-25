@@ -5,6 +5,7 @@ from sqlalchemy import select, desc, asc, func, or_
 from typing import List, Optional
 import io
 import csv
+import math
 
 from app.database import get_db
 from app.auth.security import get_current_admin
@@ -123,7 +124,7 @@ def get_cutoff_query(
 @router.get("/", response_model=PaginatedResponse[CutoffListItem])
 def list_cutoffs(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=200),
+    page_size: int = Query(20, ge=1, le=500),
     year: Optional[int] = None,
     round_number: Optional[int] = None,
     cap_round_id: Optional[int] = None,
@@ -206,7 +207,9 @@ def list_cutoffs(
         cutoff_dict['percentile'] = float(cutoff.percentile) if cutoff.percentile is not None else None
         items.append(CutoffListItem(**cutoff_dict))
         
-    return PaginatedResponse.create(items=items, total=total, params=PaginationParams(page=page, page_size=page_size))
+    import math
+    total_pages = math.ceil(total / page_size) if page_size else 0
+    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size, total_pages=total_pages)
 
 
 @router.get("/export")

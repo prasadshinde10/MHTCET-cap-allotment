@@ -33,6 +33,7 @@ class CollegeOption(BaseModel):
     college_name: str
     city: Optional[str] = None
     district: Optional[str] = None
+    college_type: Optional[str] = None
 
 class CourseOption(BaseModel):
     course_code: str
