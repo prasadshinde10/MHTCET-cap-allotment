@@ -47,6 +47,7 @@ export const SearchHistoryPage: React.FC = () => {
     if (item.filters.district) params.set('district', item.filters.district);
     if (item.filters.year) params.set('year', item.filters.year);
     if (item.filters.round) params.set('round', item.filters.round);
+    if (item.filters.percentile) params.set('percentile', item.filters.percentile);
 
     navigate(`/search?${params.toString()}`);
   };
@@ -177,6 +178,12 @@ export const SearchHistoryPage: React.FC = () => {
                   {item.filters.round && (
                     <span className="text-xs font-medium px-2 py-0.5 rounded bg-gray-100 text-gray-600">
                       Round {item.filters.round}
+                    </span>
+                  )}
+
+                  {item.filters.percentile && (
+                    <span className="text-xs font-medium font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-100">
+                      Score: ≤ {Number(item.filters.percentile).toFixed(2)}%
                     </span>
                   )}
 

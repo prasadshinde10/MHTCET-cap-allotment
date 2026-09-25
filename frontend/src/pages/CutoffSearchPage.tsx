@@ -92,6 +92,7 @@ export const CutoffSearchPage: React.FC = () => {
   const [district, setDistrict] = useState<string>(searchParams.get('district') || '');
   const [capYear, setCapYear] = useState<string>(searchParams.get('year') || '2026');
   const [capRound, setCapRound] = useState<string>(searchParams.get('round') || '');
+  const [studentPercentile, setStudentPercentile] = useState<string>(searchParams.get('percentile') || '');
 
   // UI Control States
   const [hasSearched, setHasSearched] = useState(false);
@@ -109,9 +110,10 @@ export const CutoffSearchPage: React.FC = () => {
     const distParam = searchParams.get('district');
     const yearParam = searchParams.get('year');
     const roundParam = searchParams.get('round');
+    const pctParam = searchParams.get('percentile');
 
     const hasAnyParam = Boolean(
-      courseParam || typeParam || catParam || resParam || genParam || distParam || yearParam || roundParam
+      courseParam || typeParam || catParam || resParam || genParam || distParam || yearParam || roundParam || pctParam
     );
 
     if (hasAnyParam) {
@@ -123,6 +125,7 @@ export const CutoffSearchPage: React.FC = () => {
       if (distParam !== null) setDistrict(distParam);
       if (yearParam !== null) setCapYear(yearParam);
       if (roundParam !== null) setCapRound(roundParam);
+      if (pctParam !== null) setStudentPercentile(pctParam);
       setHasSearched(true);
     }
   }, [searchParams]);
@@ -284,8 +287,9 @@ export const CutoffSearchPage: React.FC = () => {
     category_code: computedCategoryQuery,
     gender: gender || undefined,
     city_district: computedDistrictQuery,
+    max_percentile: studentPercentile ? Number(studentPercentile) : undefined,
     is_deleted: false as const,
-  }), [capYear, selectedCourse, computedCategoryQuery, gender, computedDistrictQuery]);
+  }), [capYear, selectedCourse, computedCategoryQuery, gender, computedDistrictQuery, studentPercentile]);
 
   // Fetch Round 1
   const { data: round1Data, isLoading: r1Loading, isError: r1Error, error: r1Err, refetch: r1Refetch } = useQuery({
@@ -459,6 +463,7 @@ export const CutoffSearchPage: React.FC = () => {
       district,
       year: capYear,
       round: capRound,
+      percentile: studentPercentile,
     };
 
     saveSearchHistory(currentFilters, groupedRows.length);
@@ -475,6 +480,7 @@ export const CutoffSearchPage: React.FC = () => {
     setDistrict('');
     setCapYear(filterOptions?.years?.[0]?.toString() || '2026');
     setCapRound('');
+    setStudentPercentile('');
     setTableFilter('');
     setSearchParams({});
     toast.success('Filters reset to default');
@@ -507,8 +513,11 @@ export const CutoffSearchPage: React.FC = () => {
     if (capRound) {
       chips.push({ id: 'round', label: 'CAP Round', value: `Round ${capRound}` });
     }
+    if (studentPercentile) {
+      chips.push({ id: 'percentile', label: 'Score', value: `≤ ${Number(studentPercentile).toFixed(4)}%` });
+    }
     return chips;
-  }, [selectedCourse, collegeType, casteCategory, reservationType, gender, district, capRound]);
+  }, [selectedCourse, collegeType, casteCategory, reservationType, gender, district, capRound, studentPercentile]);
 
   const handleRemoveChip = (id: string) => {
     switch (id) {
@@ -532,6 +541,9 @@ export const CutoffSearchPage: React.FC = () => {
         break;
       case 'round':
         setCapRound('');
+        break;
+      case 'percentile':
+        setStudentPercentile('');
         break;
     }
   };
@@ -602,11 +614,22 @@ export const CutoffSearchPage: React.FC = () => {
       );
     }
 
+    const studentScore = studentPercentile ? Number(studentPercentile) : null;
+    const isEligible = studentScore !== null && roundData.percentile !== undefined && roundData.percentile <= studentScore;
+    const margin = isEligible && roundData.percentile !== undefined ? (studentScore - roundData.percentile).toFixed(2) : null;
+
     return (
       <div className="flex flex-col items-end">
-        <span className="font-mono font-semibold text-gray-900 text-sm">
-          {roundData.percentile !== undefined ? `${roundData.percentile.toFixed(4)}%` : 'N/A'}
-        </span>
+        <div className="flex items-center gap-1">
+          {isEligible && (
+            <span className="inline-flex items-center text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1 rounded" title={`Eligible: Student score is ${margin}% above cutoff`}>
+              ✓
+            </span>
+          )}
+          <span className={`font-mono font-semibold text-sm ${isEligible ? 'text-emerald-700 font-bold' : 'text-gray-900'}`}>
+            {roundData.percentile !== undefined ? `${roundData.percentile.toFixed(4)}%` : 'N/A'}
+          </span>
+        </div>
         {roundData.meritNumber !== undefined && (
           <span className="text-[11px] font-mono text-gray-500">
             Merit #{roundData.meritNumber.toLocaleString()}
@@ -669,15 +692,54 @@ export const CutoffSearchPage: React.FC = () => {
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Branch / Course */}
-              <div className="md:col-span-2">
+              <div>
                 <SearchableSelect
                   label="Preferred Branch / Course"
-                  placeholder="Select preferred branch (e.g. Computer Science, Mechanical)..."
+                  placeholder="Select branch..."
                   options={courseOptions}
                   value={selectedCourse}
                   onChange={setSelectedCourse}
-                  helperText={selectedCourse ? `Selected: ${selectedCourse}` : 'Leave as "All Branches" to view all disciplines'}
+                  helperText={selectedCourse ? `Selected: ${selectedCourse}` : 'Leave as "All Branches" for all'}
                 />
+              </div>
+
+              {/* Student's MHT-CET Percentile Score */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Student's MHT-CET Percentile
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.0000001"
+                    min="0"
+                    max="100"
+                    placeholder="e.g. 85.1234567"
+                    value={studentPercentile}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '' || (Number(val) >= 0 && Number(val) <= 100)) {
+                        setStudentPercentile(val);
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 placeholder-gray-400"
+                  />
+                  {studentPercentile && (
+                    <button
+                      type="button"
+                      onClick={() => setStudentPercentile('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                      title="Clear score"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  {studentPercentile
+                    ? `Shows colleges with cutoff ≤ ${Number(studentPercentile).toFixed(4)}%`
+                    : 'Enter score to see recommended colleges'}
+                </p>
               </div>
 
               {/* CAP Year */}
@@ -814,11 +876,16 @@ export const CutoffSearchPage: React.FC = () => {
               2
             </span>
             <h2 className="text-base font-bold text-gray-900 tracking-tight">
-              Matching College Results
+              {studentPercentile ? 'Recommended Colleges' : 'Matching College Results'}
             </h2>
             {hasSearched && (
               <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                {filteredGroupedRows.length} matching offering{filteredGroupedRows.length === 1 ? '' : 's'}
+                {filteredGroupedRows.length} {studentPercentile ? 'recommended' : 'matching'} offering{filteredGroupedRows.length === 1 ? '' : 's'}
+              </span>
+            )}
+            {hasSearched && studentPercentile && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                Score: {Number(studentPercentile).toFixed(2)}% (Cutoff ≤ Score)
               </span>
             )}
           </div>

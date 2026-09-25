@@ -7,6 +7,7 @@ export interface SearchHistoryFilters {
   district: string;
   year: string;
   round: string;
+  percentile?: string;
 }
 
 export interface SearchHistoryItem {
