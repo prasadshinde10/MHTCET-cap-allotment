@@ -84,12 +84,18 @@ export const CutoffSearchPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Form Filter States
-  const [selectedCourse, setSelectedCourse] = useState<string>(searchParams.get('course') || '');
+  const [selectedCourses, setSelectedCourses] = useState<string[]>(() => {
+    const param = searchParams.get('course');
+    return param ? param.split(',').map((s) => s.trim()).filter(Boolean) : [];
+  });
   const [collegeType, setCollegeType] = useState<string>(searchParams.get('collegeType') || '');
   const [casteCategory, setCasteCategory] = useState<string>(searchParams.get('category') || '');
   const [reservationType, setReservationType] = useState<string>(searchParams.get('reservation') || '');
   const [gender, setGender] = useState<string>(searchParams.get('gender') || '');
-  const [district, setDistrict] = useState<string>(searchParams.get('district') || '');
+  const [selectedDistricts, setSelectedDistricts] = useState<string[]>(() => {
+    const param = searchParams.get('district');
+    return param ? param.split(',').map((s) => s.trim()).filter(Boolean) : [];
+  });
   const [capYear, setCapYear] = useState<string>(searchParams.get('year') || '2026');
   const [capRound, setCapRound] = useState<string>(searchParams.get('round') || '');
   const [studentPercentile, setStudentPercentile] = useState<string>(searchParams.get('percentile') || '');
@@ -117,12 +123,16 @@ export const CutoffSearchPage: React.FC = () => {
     );
 
     if (hasAnyParam) {
-      if (courseParam !== null) setSelectedCourse(courseParam);
+      if (courseParam !== null) {
+        setSelectedCourses(courseParam ? courseParam.split(',').map((s) => s.trim()).filter(Boolean) : []);
+      }
       if (typeParam !== null) setCollegeType(typeParam);
       if (catParam !== null) setCasteCategory(catParam);
       if (resParam !== null) setReservationType(resParam);
       if (genParam !== null) setGender(genParam);
-      if (distParam !== null) setDistrict(distParam);
+      if (distParam !== null) {
+        setSelectedDistricts(distParam ? distParam.split(',').map((s) => s.trim()).filter(Boolean) : []);
+      }
       if (yearParam !== null) setCapYear(yearParam);
       if (roundParam !== null) setCapRound(roundParam);
       if (pctParam !== null) setStudentPercentile(pctParam);
@@ -254,16 +264,19 @@ export const CutoffSearchPage: React.FC = () => {
 
   // Computed district query parameter ensuring Sambhajinagar/Aurangabad and Dharashiv/Osmanabad match all colleges
   const computedDistrictQuery = useMemo(() => {
-    if (!district) return undefined;
-    const lower = district.toLowerCase();
-    if (lower.includes('sambhajinagar') || lower.includes('aurangabad')) {
-      return 'Sambhajinagar';
-    }
-    if (lower.includes('dharashiv') || lower.includes('osmanabad')) {
-      return 'Dharashiv';
-    }
-    return district;
-  }, [district]);
+    if (selectedDistricts.length === 0) return undefined;
+    const mapped = selectedDistricts.map((d) => {
+      const lower = d.toLowerCase();
+      if (lower.includes('sambhajinagar') || lower.includes('aurangabad')) {
+        return 'Sambhajinagar';
+      }
+      if (lower.includes('dharashiv') || lower.includes('osmanabad')) {
+        return 'Dharashiv';
+      }
+      return d;
+    });
+    return mapped.join(',');
+  }, [selectedDistricts]);
 
   // Helper to format district name with historical alias
   const formatDistrictDisplay = (dist: string) => {
@@ -290,13 +303,13 @@ export const CutoffSearchPage: React.FC = () => {
     page: 1,
     page_size: 500,
     year: capYear ? Number(capYear) : undefined,
-    course: selectedCourse || undefined,
+    course: selectedCourses.length > 0 ? selectedCourses.join(',') : undefined,
     category_code: computedCategoryQuery,
     gender: gender || undefined,
     city_district: computedDistrictQuery,
     max_percentile: studentPercentile ? Number(studentPercentile) : undefined,
     is_deleted: false as const,
-  }), [capYear, selectedCourse, computedCategoryQuery, gender, computedDistrictQuery, studentPercentile]);
+  }), [capYear, selectedCourses, computedCategoryQuery, gender, computedDistrictQuery, studentPercentile]);
 
   // Fetch Round 1
   const { data: round1Data, isLoading: r1Loading, isError: r1Error, error: r1Err, refetch: r1Refetch } = useQuery({
@@ -462,12 +475,12 @@ export const CutoffSearchPage: React.FC = () => {
 
     // Save to Search History
     const currentFilters: SearchHistoryFilters = {
-      course: selectedCourse,
+      course: selectedCourses.join(','),
       collegeType,
       category: casteCategory,
       reservation: reservationType,
       gender,
-      district,
+      district: selectedDistricts.join(','),
       year: capYear,
       round: capRound,
       percentile: studentPercentile,
@@ -479,12 +492,12 @@ export const CutoffSearchPage: React.FC = () => {
 
   // Handle Reset Filters
   const handleResetFilters = () => {
-    setSelectedCourse('');
+    setSelectedCourses([]);
     setCollegeType('');
     setCasteCategory('');
     setReservationType('');
     setGender('');
-    setDistrict('');
+    setSelectedDistricts([]);
     setCapYear(filterOptions?.years?.[0]?.toString() || '2026');
     setCapRound('');
     setStudentPercentile('');
@@ -496,9 +509,9 @@ export const CutoffSearchPage: React.FC = () => {
   // Build active filter chips
   const activeChips: ActiveFilter[] = useMemo(() => {
     const chips: ActiveFilter[] = [];
-    if (selectedCourse) {
-      chips.push({ id: 'course', label: 'Branch', value: selectedCourse });
-    }
+    selectedCourses.forEach((c) => {
+      chips.push({ id: `course:${c}`, label: 'Branch', value: c });
+    });
     if (collegeType) {
       chips.push({ id: 'collegeType', label: 'Type', value: collegeType });
     }
@@ -513,10 +526,10 @@ export const CutoffSearchPage: React.FC = () => {
     if (gender === 'ladies') {
       chips.push({ id: 'gender', label: 'Quota', value: 'Ladies Only' });
     }
-    if (district) {
-      const found = districtOptions.find((d) => d.value === district);
-      chips.push({ id: 'district', label: 'District', value: found ? found.label : district });
-    }
+    selectedDistricts.forEach((d) => {
+      const found = districtOptions.find((opt) => opt.value === d);
+      chips.push({ id: `district:${d}`, label: 'District', value: found ? found.label : d });
+    });
     if (capRound) {
       chips.push({ id: 'round', label: 'CAP Round', value: `Round ${capRound}` });
     }
@@ -524,13 +537,20 @@ export const CutoffSearchPage: React.FC = () => {
       chips.push({ id: 'percentile', label: 'Score', value: `≤ ${Number(studentPercentile).toFixed(4)}%` });
     }
     return chips;
-  }, [selectedCourse, collegeType, casteCategory, reservationType, gender, district, capRound, studentPercentile]);
+  }, [selectedCourses, collegeType, casteCategory, reservationType, gender, selectedDistricts, districtOptions, capRound, studentPercentile]);
 
   const handleRemoveChip = (id: string) => {
+    if (id.startsWith('course:')) {
+      const c = id.replace('course:', '');
+      setSelectedCourses((prev) => prev.filter((item) => item !== c));
+      return;
+    }
+    if (id.startsWith('district:')) {
+      const d = id.replace('district:', '');
+      setSelectedDistricts((prev) => prev.filter((item) => item !== d));
+      return;
+    }
     switch (id) {
-      case 'course':
-        setSelectedCourse('');
-        break;
       case 'collegeType':
         setCollegeType('');
         break;
@@ -542,9 +562,6 @@ export const CutoffSearchPage: React.FC = () => {
         break;
       case 'gender':
         setGender('');
-        break;
-      case 'district':
-        setDistrict('');
         break;
       case 'round':
         setCapRound('');
@@ -702,11 +719,16 @@ export const CutoffSearchPage: React.FC = () => {
               <div>
                 <SearchableSelect
                   label="Preferred Branch / Course"
-                  placeholder="Select branch..."
+                  placeholder="Select branches..."
                   options={courseOptions}
-                  value={selectedCourse}
-                  onChange={setSelectedCourse}
-                  helperText={selectedCourse ? `Selected: ${selectedCourse}` : 'Leave as "All Branches" for all'}
+                  multiple={true}
+                  values={selectedCourses}
+                  onMultiChange={setSelectedCourses}
+                  helperText={
+                    selectedCourses.length > 0
+                      ? `${selectedCourses.length} branch(es) selected`
+                      : 'Leave as "All Branches" for all disciplines'
+                  }
                 />
               </div>
 
@@ -824,12 +846,17 @@ export const CutoffSearchPage: React.FC = () => {
               {/* District */}
               <div>
                 <SearchableSelect
-                  label="District"
-                  placeholder="Select district..."
+                  label="District(s) / City"
+                  placeholder="Select districts..."
                   options={districtOptions}
-                  value={district}
-                  onChange={setDistrict}
-                  helperText="Searchable Maharashtra district list"
+                  multiple={true}
+                  values={selectedDistricts}
+                  onMultiChange={setSelectedDistricts}
+                  helperText={
+                    selectedDistricts.length > 0
+                      ? `${selectedDistricts.length} district(s) selected`
+                      : 'Searchable Maharashtra district list'
+                  }
                 />
               </div>
 
@@ -1032,8 +1059,8 @@ export const CutoffSearchPage: React.FC = () => {
               <Button
                 size="sm"
                 onClick={() => {
-                  setSelectedCourse('');
-                  setDistrict('');
+                  setSelectedCourses([]);
+                  setSelectedDistricts([]);
                   handleFindColleges();
                 }}
                 className="bg-primary-600 text-white"

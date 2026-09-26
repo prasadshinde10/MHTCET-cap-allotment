@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown, Search, X, Check } from 'lucide-react';
 import { cn } from '../../utils/utils';
 
@@ -12,8 +12,13 @@ interface SearchableSelectProps {
   label?: string;
   placeholder?: string;
   options: SearchableOption[];
-  value: string;
-  onChange: (value: string) => void;
+  // Single-select props
+  value?: string;
+  onChange?: (value: string) => void;
+  // Multi-select props
+  multiple?: boolean;
+  values?: string[];
+  onMultiChange?: (values: string[]) => void;
   disabled?: boolean;
   className?: string;
   id?: string;
@@ -24,8 +29,11 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   label,
   placeholder = 'Select option...',
   options,
-  value,
+  value = '',
   onChange,
+  multiple = false,
+  values = [],
+  onMultiChange,
   disabled = false,
   className,
   id,
@@ -35,8 +43,6 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-
-  const selectedOption = options.find((opt) => opt.value === value);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -60,27 +66,61 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
     }
   }, [isOpen]);
 
-  const filteredOptions = options.filter((opt) => {
-    if (!searchQuery.trim()) return true;
+  const filteredOptions = useMemo(() => {
+    if (!searchQuery.trim()) return options;
     const q = searchQuery.toLowerCase();
-    return (
-      opt.label.toLowerCase().includes(q) ||
-      (opt.sublabel && opt.sublabel.toLowerCase().includes(q)) ||
-      opt.value.toLowerCase().includes(q)
-    );
-  });
+    return options.filter((opt) => {
+      return (
+        opt.label.toLowerCase().includes(q) ||
+        (opt.sublabel && opt.sublabel.toLowerCase().includes(q)) ||
+        opt.value.toLowerCase().includes(q)
+      );
+    });
+  }, [options, searchQuery]);
 
-  const handleSelect = (val: string) => {
-    onChange(val);
+  // Labels for multi-select
+  const selectedMultiOptions = useMemo(() => {
+    if (!multiple) return [];
+    return options.filter((opt) => values.includes(opt.value));
+  }, [options, values, multiple]);
+
+  const selectedSingleOption = useMemo(() => {
+    if (multiple) return undefined;
+    return options.find((opt) => opt.value === value);
+  }, [options, value, multiple]);
+
+  const handleSingleSelect = (val: string) => {
+    onChange?.(val);
     setIsOpen(false);
+  };
+
+  const handleToggleMulti = (val: string) => {
+    if (!onMultiChange) return;
+    if (!val) {
+      // Clicked "All" option -> clear specific selections
+      onMultiChange([]);
+      return;
+    }
+
+    if (values.includes(val)) {
+      onMultiChange(values.filter((v) => v !== val));
+    } else {
+      onMultiChange([...values, val]);
+    }
   };
 
   const handleClear = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onChange('');
+    if (multiple) {
+      onMultiChange?.([]);
+    } else {
+      onChange?.('');
+    }
   };
 
   const selectId = id || (label ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
+
+  const hasSelections = multiple ? values.length > 0 : Boolean(value);
 
   return (
     <div className={cn('w-full relative', className)} ref={containerRef}>
@@ -107,11 +147,33 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           disabled && 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200'
         )}
       >
-        <span className={cn('truncate mr-2', !selectedOption && 'text-gray-400 font-normal')}>
-          {selectedOption ? selectedOption.label : placeholder}
-        </span>
+        <div className="truncate mr-2 flex items-center gap-1.5">
+          {multiple ? (
+            values.length === 0 ? (
+              <span className="text-gray-400 font-normal">{placeholder}</span>
+            ) : values.length === 1 ? (
+              <span className="text-gray-900 font-medium truncate">
+                {selectedMultiOptions[0]?.label || values[0]}
+              </span>
+            ) : (
+              <div className="flex items-center gap-1.5 truncate">
+                <span className="text-gray-900 font-medium truncate">
+                  {selectedMultiOptions[0]?.label || values[0]}
+                </span>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-primary-50 text-primary-700 border border-primary-100 flex-shrink-0">
+                  +{values.length - 1} more
+                </span>
+              </div>
+            )
+          ) : (
+            <span className={cn('truncate', !selectedSingleOption && 'text-gray-400 font-normal')}>
+              {selectedSingleOption ? selectedSingleOption.label : placeholder}
+            </span>
+          )}
+        </div>
+
         <div className="flex items-center space-x-1 flex-shrink-0">
-          {selectedOption && !disabled && (
+          {hasSelections && !disabled && (
             <span
               onClick={handleClear}
               className="p-0.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
@@ -154,6 +216,24 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
             )}
           </div>
 
+          {/* Quick action info bar for multi-select */}
+          {multiple && (
+            <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 flex items-center justify-between text-xs text-gray-500">
+              <span className="font-medium">
+                {values.length === 0 ? 'Select options with checkboxes' : `${values.length} selected`}
+              </span>
+              {values.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onMultiChange?.([])}
+                  className="text-primary-600 hover:text-primary-700 font-medium hover:underline text-xs"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Options list */}
           <div className="max-h-60 overflow-y-auto py-1 divide-y divide-gray-50">
             {filteredOptions.length === 0 ? (
@@ -162,32 +242,82 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
               </div>
             ) : (
               filteredOptions.map((opt) => {
-                const isSelected = opt.value === value;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => handleSelect(opt.value)}
-                    className={cn(
-                      'w-full text-left px-3.5 py-2.5 text-xs sm:text-sm flex items-center justify-between transition-colors',
-                      isSelected
-                        ? 'bg-primary-50 text-primary-900 font-semibold'
-                        : 'text-gray-700 hover:bg-gray-50'
-                    )}
-                  >
-                    <div className="truncate pr-2">
-                      <div className="truncate">{opt.label}</div>
-                      {opt.sublabel && (
-                        <div className="text-[11px] text-gray-400 font-normal truncate mt-0.5">
-                          {opt.sublabel}
-                        </div>
+                if (multiple) {
+                  // Multi-select option with checkbox
+                  const isAllOption = opt.value === '';
+                  const isChecked = isAllOption ? values.length === 0 : values.includes(opt.value);
+
+                  return (
+                    <button
+                      key={opt.value || '__all__'}
+                      type="button"
+                      onClick={() => handleToggleMulti(opt.value)}
+                      className={cn(
+                        'w-full text-left px-3.5 py-2.5 text-xs sm:text-sm flex items-center justify-between transition-colors',
+                        isChecked
+                          ? 'bg-primary-50/60 text-primary-900 font-medium'
+                          : 'text-gray-700 hover:bg-gray-50'
                       )}
-                    </div>
-                    {isSelected && (
-                      <Check className="w-4 h-4 text-primary-600 flex-shrink-0" />
-                    )}
-                  </button>
-                );
+                    >
+                      <div className="flex items-center min-w-0 pr-2">
+                        {/* Checkbox box */}
+                        <div
+                          className={cn(
+                            'w-4 h-4 rounded border flex items-center justify-center mr-2.5 transition-colors flex-shrink-0',
+                            isChecked
+                              ? 'bg-primary-600 border-primary-600 text-white shadow-xs'
+                              : 'border-gray-300 bg-white'
+                          )}
+                        >
+                          {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                        </div>
+
+                        <div className="truncate">
+                          <div className="truncate">{opt.label}</div>
+                          {opt.sublabel && (
+                            <div className="text-[11px] text-gray-400 font-normal truncate mt-0.5">
+                              {opt.sublabel}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {isChecked && !isAllOption && (
+                        <span className="text-[11px] font-semibold text-primary-600 bg-primary-100/60 px-1.5 py-0.5 rounded flex-shrink-0">
+                          Selected
+                        </span>
+                      )}
+                    </button>
+                  );
+                } else {
+                  // Single-select option
+                  const isSelected = opt.value === value;
+                  return (
+                    <button
+                      key={opt.value || '__all__'}
+                      type="button"
+                      onClick={() => handleSingleSelect(opt.value)}
+                      className={cn(
+                        'w-full text-left px-3.5 py-2.5 text-xs sm:text-sm flex items-center justify-between transition-colors',
+                        isSelected
+                          ? 'bg-primary-50 text-primary-900 font-semibold'
+                          : 'text-gray-700 hover:bg-gray-50'
+                      )}
+                    >
+                      <div className="truncate pr-2">
+                        <div className="truncate">{opt.label}</div>
+                        {opt.sublabel && (
+                          <div className="text-[11px] text-gray-400 font-normal truncate mt-0.5">
+                            {opt.sublabel}
+                          </div>
+                        )}
+                      </div>
+                      {isSelected && (
+                        <Check className="w-4 h-4 text-primary-600 flex-shrink-0" />
+                      )}
+                    </button>
+                  );
+                }
               })
             )}
           </div>
