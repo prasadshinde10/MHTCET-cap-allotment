@@ -22,6 +22,7 @@ from app.models.course import Course
 from app.models.cap_round import CapRound
 from app.models.import_batch import ImportBatch
 from app.models.import_log import ImportLog
+from app.parser.institutes_data import INSTITUTES_DATA
 
 logger = logging.getLogger(__name__)
 
@@ -226,15 +227,31 @@ class PDFImporter:
 
                 # Ensure College exists in DB
                 if current_college_code not in college_cache:
-                    district = extract_district(current_college_name)
+                    inst_meta = INSTITUTES_DATA.get(str(current_college_code).zfill(5))
+                    if inst_meta:
+                        col_district = inst_meta.get("district") or "Maharashtra"
+                        col_type = inst_meta.get("college_type") or ("Autonomous" if "autonomous" in status_lower else "Non-Autonomous")
+                        col_funding = inst_meta.get("funding_type") or governance_type
+                        col_minority = inst_meta.get("minority_status") or ("Minority" if "minority" in status_lower else "Non-Minority")
+                        col_univ = inst_meta.get("home_university") or ""
+                        col_name = inst_meta.get("name") or current_college_name
+                    else:
+                        col_district = extract_district(current_college_name)
+                        col_type = "Autonomous" if "autonomous" in status_lower else "Non-Autonomous"
+                        col_funding = governance_type
+                        col_minority = "Minority" if "minority" in status_lower else "Non-Minority"
+                        col_univ = ""
+                        col_name = current_college_name
+
                     col_obj = College(
                         college_code=current_college_code,
-                        college_name=current_college_name,
-                        city=district,
-                        district=district,
-                        college_type="Autonomous" if "autonomous" in status_lower else "Non-Autonomous",
-                        funding_type=governance_type,
-                        minority_status="Minority" if "minority" in status_lower else "Non-Minority",
+                        college_name=col_name,
+                        city=col_district,
+                        district=col_district,
+                        college_type=col_type,
+                        funding_type=col_funding,
+                        minority_status=col_minority,
+                        home_university=col_univ,
                         status="Active"
                     )
                     self.db.add(col_obj)
