@@ -26,6 +26,9 @@ async def lifespan(app: FastAPI):
     # Ensure upload directory exists
     os.makedirs(settings.UPLOAD_DIRECTORY, exist_ok=True)
 
+    # Ensure database schema tables exist
+    Base.metadata.create_all(bind=engine)
+
     # Seed admin user on startup
     db = SessionLocal()
     try:

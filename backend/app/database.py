@@ -12,7 +12,11 @@ db_url = settings.DATABASE_URL
 if db_url.startswith("sqlite"):
     connect_args["check_same_thread"] = False
     # If using relative sqlite path, resolve to project root directory
-    if db_url.startswith("sqlite:///./") or db_url == "sqlite:///cap_portal.db":
+    if "sqlite:///./" in db_url:
+        db_filename = db_url.split("sqlite:///./")[-1]
+        db_file = Path(__file__).resolve().parent.parent.parent / db_filename
+        db_url = f"sqlite:///{db_file.as_posix()}"
+    elif db_url == "sqlite:///cap_portal.db":
         db_file = Path(__file__).resolve().parent.parent.parent / "cap_portal.db"
         db_url = f"sqlite:///{db_file.as_posix()}"
     engine = create_engine(db_url, connect_args=connect_args)
