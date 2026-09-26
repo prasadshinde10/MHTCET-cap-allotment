@@ -4,6 +4,7 @@ export interface CollegeOption {
   city?: string;
   district?: string;
   college_type?: string;
+  funding_type?: string;
 }
 
 export interface CourseOption {

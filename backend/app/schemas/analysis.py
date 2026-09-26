@@ -34,6 +34,7 @@ class CollegeOption(BaseModel):
     city: Optional[str] = None
     district: Optional[str] = None
     college_type: Optional[str] = None
+    funding_type: Optional[str] = None
 
 class CourseOption(BaseModel):
     course_code: str

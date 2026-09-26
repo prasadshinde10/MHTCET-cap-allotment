@@ -146,7 +146,7 @@ def get_filter_options(
 
     # Colleges
     college_rows = db.execute(
-        select(College.college_code, College.college_name, College.city, College.district, College.college_type)
+        select(College.college_code, College.college_name, College.city, College.district, College.college_type, College.funding_type)
         .order_by(College.college_name.asc())
     ).all()
     colleges = [
@@ -155,7 +155,8 @@ def get_filter_options(
             college_name=r[1],
             city=r[2],
             district=r[3],
-            college_type=r[4]
+            college_type=r[4],
+            funding_type=r[5]
         )
         for r in college_rows
     ]

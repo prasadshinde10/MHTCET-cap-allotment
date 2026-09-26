@@ -63,6 +63,7 @@ const RESERVATION_TYPES = [
 
 const COLLEGE_TYPES = [
   { value: '', label: 'All College Types' },
+  { value: 'Government', label: 'Government' },
   { value: 'Autonomous', label: 'Autonomous' },
   { value: 'Non-Autonomous', label: 'Non-Autonomous' },
 ];
@@ -156,11 +157,12 @@ export const CutoffSearchPage: React.FC = () => {
 
   // College metadata lookup map: code -> details (uses filterOptions which returns ALL colleges)
   const collegeMetaMap = useMemo(() => {
-    const map = new Map<string, { type: string; district?: string; city?: string }>();
+    const map = new Map<string, { type: string; fundingType?: string; district?: string; city?: string }>();
     if (filterOptions?.colleges) {
       for (const col of filterOptions.colleges) {
         map.set(col.college_code, {
           type: col.college_type || 'Non-Autonomous',
+          fundingType: col.funding_type || undefined,
           district: col.district || undefined,
           city: col.city || undefined,
         });
@@ -378,10 +380,22 @@ export const CutoffSearchPage: React.FC = () => {
 
         // Filter by college type if specified
         if (collegeType) {
-          if (collegeType === 'Autonomous' && !effectiveType.toLowerCase().includes('autonomous')) {
+          if (collegeType === 'Government') {
+            const isGov =
+              (colMeta?.fundingType && colMeta.fundingType.toLowerCase().includes('government')) ||
+              (item.college_name && item.college_name.toLowerCase().includes('government')) ||
+              (item.college_name && (
+                item.college_name.toLowerCase().includes('vjti') ||
+                item.college_name.toLowerCase().includes('university department') ||
+                item.college_name.toLowerCase().includes('institute of chemical technology') ||
+                item.college_name.toLowerCase().includes('lahoti')
+              ));
+            if (!isGov) {
+              return;
+            }
+          } else if (collegeType === 'Autonomous' && !effectiveType.toLowerCase().includes('autonomous')) {
             return;
-          }
-          if (collegeType === 'Non-Autonomous' && effectiveType.toLowerCase().includes('autonomous')) {
+          } else if (collegeType === 'Non-Autonomous' && effectiveType.toLowerCase().includes('autonomous')) {
             return;
           }
         }
