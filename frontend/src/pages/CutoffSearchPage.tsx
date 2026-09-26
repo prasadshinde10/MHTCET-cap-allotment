@@ -90,7 +90,7 @@ export const CutoffSearchPage: React.FC = () => {
   const [reservationType, setReservationType] = useState<string>(searchParams.get('reservation') || '');
   const [gender, setGender] = useState<string>(searchParams.get('gender') || '');
   const [district, setDistrict] = useState<string>(searchParams.get('district') || '');
-  const [capYear, setCapYear] = useState<string>(searchParams.get('year') || '2026');
+  const [capYear, setCapYear] = useState<string>(searchParams.get('year') || '2024');
   const [capRound, setCapRound] = useState<string>(searchParams.get('round') || '');
   const [studentPercentile, setStudentPercentile] = useState<string>(searchParams.get('percentile') || '');
 
@@ -136,6 +136,13 @@ export const CutoffSearchPage: React.FC = () => {
     queryFn: getFilterOptions,
     staleTime: 300000,
   });
+
+  // Auto-set capYear to the latest year available in database if not set by URL query
+  useEffect(() => {
+    if (filterOptions?.years?.length && !searchParams.get('year')) {
+      setCapYear(filterOptions.years[0].toString());
+    }
+  }, [filterOptions, searchParams]);
 
   // College metadata lookup map: code -> details (uses filterOptions which returns ALL colleges)
   const collegeMetaMap = useMemo(() => {
@@ -227,7 +234,7 @@ export const CutoffSearchPage: React.FC = () => {
     if (filterOptions?.years && filterOptions.years.length > 0) {
       return filterOptions.years.map((y) => ({ value: y.toString(), label: y.toString() }));
     }
-    return [{ value: '2026', label: '2026' }];
+    return [{ value: '2024', label: '2024' }];
   }, [filterOptions]);
 
   // Determine computed category query parameter
@@ -478,7 +485,7 @@ export const CutoffSearchPage: React.FC = () => {
     setReservationType('');
     setGender('');
     setDistrict('');
-    setCapYear(filterOptions?.years?.[0]?.toString() || '2026');
+    setCapYear(filterOptions?.years?.[0]?.toString() || '2024');
     setCapRound('');
     setStudentPercentile('');
     setTableFilter('');
