@@ -5,6 +5,7 @@ import { AdminLayout } from './layouts/AdminLayout';
 import { LoginPage } from './pages/LoginPage';
 import { CutoffSearchPage } from './pages/CutoffSearchPage';
 import { SearchHistoryPage } from './pages/SearchHistoryPage';
+import { ImportNewPage } from './pages/ImportNewPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 const App: React.FC = () => {
@@ -20,6 +21,7 @@ const App: React.FC = () => {
       {/* Admin App */}
       <Route element={<AdminLayout />}>
         <Route path="/search" element={<CutoffSearchPage />} />
+        <Route path="/imports/new" element={<ImportNewPage />} />
         <Route path="/history" element={<SearchHistoryPage />} />
 
         {/* Redirects from legacy/removed routes directly to Cutoff Search */}
@@ -30,8 +32,7 @@ const App: React.FC = () => {
         <Route path="/analysis/data-quality" element={<Navigate to="/search" replace />} />
         <Route path="/colleges" element={<Navigate to="/search" replace />} />
         <Route path="/courses" element={<Navigate to="/search" replace />} />
-        <Route path="/imports" element={<Navigate to="/search" replace />} />
-        <Route path="/imports/*" element={<Navigate to="/search" replace />} />
+        <Route path="/imports" element={<Navigate to="/imports/new" replace />} />
         <Route path="/parser-errors" element={<Navigate to="/search" replace />} />
         <Route path="/audit-logs" element={<Navigate to="/search" replace />} />
         <Route path="/settings" element={<Navigate to="/search" replace />} />

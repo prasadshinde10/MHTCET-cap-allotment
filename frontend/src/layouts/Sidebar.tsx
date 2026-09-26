@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Search, History, LogOut, GraduationCap, ShieldCheck } from 'lucide-react';
+import { Search, History, LogOut, GraduationCap, ShieldCheck, UploadCloud } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../utils/utils';
 
@@ -13,6 +13,12 @@ export const Sidebar: React.FC = () => {
       to: '/search',
       icon: Search,
       badge: 'Primary',
+    },
+    {
+      name: 'Upload & Parse PDF',
+      to: '/imports/new',
+      icon: UploadCloud,
+      badge: 'Realtime',
     },
     {
       name: 'Search History',
