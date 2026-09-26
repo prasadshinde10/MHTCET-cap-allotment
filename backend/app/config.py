@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     JWT_EXPIRY_HOURS: int = 8
 
-    # Application
+    # Application development
     APP_ENV: str = "development"
     APP_VERSION: str = "1.0.0"
     PARSER_VERSION: str = "1.0.0"
