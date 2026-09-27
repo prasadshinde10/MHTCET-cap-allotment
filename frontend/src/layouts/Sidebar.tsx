@@ -9,10 +9,16 @@ export const Sidebar: React.FC = () => {
 
   const navItems = [
     {
-      name: 'Cutoff Search',
-      to: '/search',
+      name: 'MHT-CET (State Cutoff)',
+      to: '/search?panel=state',
       icon: Search,
-      badge: 'Primary',
+      badge: 'State',
+    },
+    {
+      name: 'MHT-CET (All India)',
+      to: '/search?panel=all_india',
+      icon: Search,
+      badge: 'All India',
     },
     {
       name: 'Upload & Parse PDF',

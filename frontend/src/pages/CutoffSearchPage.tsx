@@ -84,6 +84,15 @@ const ROUND_OPTIONS = [
 export const CutoffSearchPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // Active Panel state: STATE (Maharashtra State) vs ALL_INDIA (All India Cutoffs)
+  const [activePanel, setActivePanel] = useState<'STATE' | 'ALL_INDIA'>(() => {
+    const p = searchParams.get('panel');
+    if (p && (p.toLowerCase().includes('ai') || p.toLowerCase().includes('all'))) {
+      return 'ALL_INDIA';
+    }
+    return 'STATE';
+  });
+
   // Form Filter States
   const [selectedCourses, setSelectedCourses] = useState<string[]>(() => {
     const param = searchParams.get('course');
@@ -311,7 +320,8 @@ export const CutoffSearchPage: React.FC = () => {
     city_district: computedDistrictQuery,
     max_percentile: studentPercentile ? Number(studentPercentile) : undefined,
     is_deleted: false as const,
-  }), [capYear, selectedCourses, computedCategoryQuery, gender, computedDistrictQuery, studentPercentile]);
+    quota_group: activePanel,
+  }), [capYear, selectedCourses, computedCategoryQuery, gender, computedDistrictQuery, studentPercentile, activePanel]);
 
   // Fetch Round 1
   const { data: round1Data, isLoading: r1Loading, isError: r1Error, error: r1Err, refetch: r1Refetch } = useQuery({
@@ -684,9 +694,9 @@ export const CutoffSearchPage: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-gray-900 tracking-tight">Cutoff Search</h1>
+              <h1 className="text-xl font-bold text-gray-900 tracking-tight">Cutoff Search & Counselling</h1>
               <Badge variant="info" className="uppercase text-[10px] tracking-wider font-semibold">
-                Admin Counselling
+                Dual Panel Portal
               </Badge>
             </div>
             <p className="text-sm text-gray-500 mt-1">
@@ -703,6 +713,70 @@ export const CutoffSearchPage: React.FC = () => {
               <RotateCcw className="w-3.5 h-3.5" />
               Reset Filters
             </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Dual Panel Switcher Banner */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 shadow-md">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2 bg-slate-950/90 p-1.5 rounded-lg border border-slate-800 w-full md:w-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setActivePanel('STATE');
+                setSearchParams((prev) => {
+                  const p = new URLSearchParams(prev);
+                  p.set('panel', 'state');
+                  return p;
+                });
+              }}
+              className={`flex-1 md:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-md text-xs font-bold transition-all ${
+                activePanel === 'STATE'
+                  ? 'bg-primary-600 text-white shadow-sm ring-1 ring-primary-500'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+              }`}
+            >
+              <Building2 className="w-4 h-4 text-primary-300" />
+              <span>MHT-CET (Maharashtra State)</span>
+              <span className="ml-1 text-[10px] bg-slate-800 text-primary-300 px-2 py-0.5 rounded-full border border-slate-700">
+                104,649 Records
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActivePanel('ALL_INDIA');
+                setSearchParams((prev) => {
+                  const p = new URLSearchParams(prev);
+                  p.set('panel', 'all_india');
+                  return p;
+                });
+              }}
+              className={`flex-1 md:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-md text-xs font-bold transition-all ${
+                activePanel === 'ALL_INDIA'
+                  ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-indigo-300" />
+              <span>MHT-CET (All India Cutoff)</span>
+              <span className="ml-1 text-[10px] bg-slate-800 text-indigo-300 px-2 py-0.5 rounded-full border border-slate-700">
+                6,564 Records
+              </span>
+            </button>
+          </div>
+
+          <div className="text-right px-2 hidden lg:block">
+            <span className="text-xs font-bold text-slate-200">
+              {activePanel === 'STATE' ? '🏛️ Maharashtra State Candidate Quotas' : '🌐 All India / JEE Main Candidate Quotas'}
+            </span>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              {activePanel === 'STATE'
+                ? 'Evaluating GOPEN, LOPEN, OBC, SC, ST, EWS, TFWS State Merit'
+                : 'Evaluating JEE Main Percentile & All India Merit Ranks across Institutes'}
+            </p>
           </div>
         </div>
       </div>

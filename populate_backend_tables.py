@@ -7,7 +7,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def populate():
-    logger.info("Starting population of backend tables from cutoff_records...")
+    logger.info("Starting population of backend tables from cutoff_records and all_india_cutoff_records...")
     conn = sqlite3.connect('cutoff.db')
     cur = conn.cursor()
     
@@ -23,14 +23,15 @@ def populate():
     logger.info("Populating cap_rounds...")
     cur.execute("DELETE FROM cap_rounds;")
     for r in range(1, 5):
-        cnt = cur.execute("SELECT COUNT(*) FROM cutoff_records WHERE cap_round = ?", (r,)).fetchone()[0]
+        cnt_state = cur.execute("SELECT COUNT(*) FROM cutoff_records WHERE cap_round = ?", (r,)).fetchone()[0]
+        cnt_ai = cur.execute("SELECT COUNT(*) FROM all_india_cutoff_records WHERE cap_round = ?", (r,)).fetchone()[0] if cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='all_india_cutoff_records'").fetchone() else 0
         pages = cur.execute("SELECT MAX(page_number) FROM cutoff_records WHERE cap_round = ?", (r,)).fetchone()[0] or 0
         cur.execute("""
             INSERT INTO cap_rounds (id, year, round_number, round_name, source_filename, processing_status, total_records, total_pages, error_count, created_at, updated_at)
             VALUES (?, 2024, ?, ?, ?, 'COMPLETED', ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        """, (r, r, f"CAP Round {r}", f"MHT-CET_CAP{r}_Cutoff.pdf", cnt, pages))
+        """, (r, r, f"CAP Round {r}", f"MHT-CET_CAP{r}_Cutoff.pdf", cnt_state + cnt_ai, pages))
 
-    # 3. Populate colleges
+    # 3. Populate colleges (combining state & all india college codes)
     logger.info("Populating colleges...")
     cur.execute("DELETE FROM colleges;")
     cur.execute("""
@@ -51,6 +52,28 @@ def populate():
         FROM cutoff_records
         GROUP BY college_code;
     """)
+    
+    # Insert any All India colleges not in state cutoff_records
+    if cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='all_india_cutoff_records'").fetchone():
+        cur.execute("""
+            INSERT OR IGNORE INTO colleges (college_code, college_name, city, district, college_type, funding_type, minority_status, minority_type, home_university, status, created_at, updated_at)
+            SELECT 
+                college_code,
+                college_name,
+                '' AS city,
+                '' AS district,
+                'Unknown' AS college_type,
+                'Unknown' AS funding_type,
+                'Non-Minority' AS minority_status,
+                '' AS minority_type,
+                '' AS home_university,
+                'Active' AS status,
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP
+            FROM all_india_cutoff_records
+            WHERE college_code NOT IN (SELECT college_code FROM colleges)
+            GROUP BY college_code;
+        """)
 
     # 4. Populate courses
     logger.info("Populating courses...")
@@ -63,14 +86,20 @@ def populate():
             cr.course_name,
             CURRENT_TIMESTAMP,
             CURRENT_TIMESTAMP
-        FROM (SELECT DISTINCT college_code, course_code, course_name FROM cutoff_records) cr
+        FROM (
+            SELECT DISTINCT college_code, course_code, course_name FROM cutoff_records
+            UNION
+            SELECT DISTINCT college_code, choice_code AS course_code, course_name FROM all_india_cutoff_records
+        ) cr
         JOIN colleges col ON col.college_code = cr.college_code
         GROUP BY col.id, cr.course_code;
     """)
 
-    # 5. Populate cutoffs
-    logger.info("Populating cutoffs from cutoff_records...")
+    # 5. Populate cutoffs (State Level + All India)
+    logger.info("Populating cutoffs from cutoff_records and all_india_cutoff_records...")
     cur.execute("DELETE FROM cutoffs;")
+    
+    # Insert State Cutoffs
     cur.execute("""
         INSERT INTO cutoffs (
             year, cap_round_id, course_id, seat_section, seat_section_raw,
@@ -105,19 +134,53 @@ def populate():
         JOIN courses crs ON crs.college_id = col.id AND crs.course_code = r.course_code;
     """)
 
+    # Insert All India Cutoffs
+    if cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='all_india_cutoff_records'").fetchone():
+        cur.execute("""
+            INSERT INTO cutoffs (
+                year, cap_round_id, course_id, seat_section, seat_section_raw,
+                category_code, gender, seat_category, stage, merit_number,
+                percentile, source_page, source_pdf, is_manually_corrected, is_deleted,
+                created_at, updated_at
+            )
+            SELECT
+                2024 AS year,
+                ai.cap_round AS cap_round_id,
+                crs.id AS course_id,
+                'All India Seats (AI)' AS seat_section,
+                ai.seat_type AS seat_section_raw,
+                'AI' AS category_code,
+                'General' AS gender,
+                ai.seat_type AS seat_category,
+                'AI' AS stage,
+                ai.merit_rank AS merit_number,
+                ai.merit_percentile AS percentile,
+                ai.page_number AS source_page,
+                ai.source_pdf AS source_pdf,
+                0 AS is_manually_corrected,
+                0 AS is_deleted,
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP
+            FROM all_india_cutoff_records ai
+            JOIN colleges col ON col.college_code = ai.college_code
+            JOIN courses crs ON crs.college_id = col.id AND crs.course_code = ai.choice_code;
+        """)
+
     conn.commit()
 
     # Verification
     col_cnt = cur.execute("SELECT COUNT(*) FROM colleges;").fetchone()[0]
     crs_cnt = cur.execute("SELECT COUNT(*) FROM courses;").fetchone()[0]
     cut_cnt = cur.execute("SELECT COUNT(*) FROM cutoffs;").fetchone()[0]
+    state_cnt = cur.execute("SELECT COUNT(*) FROM cutoffs WHERE seat_section != 'All India Seats (AI)';").fetchone()[0]
+    ai_cnt = cur.execute("SELECT COUNT(*) FROM cutoffs WHERE seat_section = 'All India Seats (AI)';").fetchone()[0]
     rnd_cnt = cur.execute("SELECT COUNT(*) FROM cap_rounds;").fetchone()[0]
     adm_cnt = cur.execute("SELECT COUNT(*) FROM admin_users;").fetchone()[0]
 
     logger.info("=== POPULATION COMPLETE ===")
     logger.info(f"Colleges: {col_cnt}")
     logger.info(f"Courses: {crs_cnt}")
-    logger.info(f"Cutoffs: {cut_cnt}")
+    logger.info(f"Total Cutoffs: {cut_cnt} (State: {state_cnt} | All India: {ai_cnt})")
     logger.info(f"CAP Rounds: {rnd_cnt}")
     logger.info(f"Admin Users: {adm_cnt}")
 

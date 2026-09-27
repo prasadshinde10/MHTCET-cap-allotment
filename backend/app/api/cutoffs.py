@@ -34,12 +34,20 @@ def get_cutoff_query(
     max_percentile: Optional[float] = None,
     min_merit: Optional[int] = None,
     max_merit: Optional[int] = None,
-    is_deleted: Optional[bool] = False
+    is_deleted: Optional[bool] = False,
+    quota_group: Optional[str] = None
 ):
     stmt = select(Cutoff, College, Course, CapRound)\
         .join(Course, Course.id == Cutoff.course_id)\
         .join(College, College.id == Course.college_id)\
         .join(CapRound, CapRound.id == Cutoff.cap_round_id)
+
+    if quota_group:
+        qg = quota_group.strip().upper()
+        if qg in ['ALL_INDIA', 'AI', 'ALLINDIA']:
+            stmt = stmt.where(Cutoff.seat_section == 'All India Seats (AI)')
+        elif qg in ['STATE', 'MH', 'MHT_CET', 'MAHARASHTRA']:
+            stmt = stmt.where(Cutoff.seat_section != 'All India Seats (AI)')
         
     if year is not None:
         stmt = stmt.where(Cutoff.year == year)
@@ -167,6 +175,7 @@ def list_cutoffs(
     max_merit: Optional[int] = None,
     sort_by: Optional[str] = Query("percentile_desc"),
     is_deleted: Optional[bool] = False,
+    quota_group: Optional[str] = None,
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin)
 ):
@@ -192,7 +201,8 @@ def list_cutoffs(
         max_percentile=max_percentile,
         min_merit=min_merit,
         max_merit=max_merit,
-        is_deleted=is_deleted
+        is_deleted=is_deleted,
+        quota_group=quota_group
     )
     
     # Total count query
