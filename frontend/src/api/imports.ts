@@ -9,6 +9,29 @@ import {
 } from '../types/import';
 
 
+export interface ProcessBatchResponse {
+  status: string;
+  pages_processed: number;
+  records_created: number;
+  colleges_found?: number;
+  courses_found?: number;
+  warnings?: number;
+  errors?: number;
+}
+
+export interface DbStatus {
+  total_cutoffs: number;
+  total_colleges: number;
+  total_courses: number;
+  total_batches: number;
+}
+
+export interface ResetDbResponse {
+  success: boolean;
+  message: string;
+  backup_file?: string;
+}
+
 export const uploadPdf = async (file: File, year: number, roundNumber: number): Promise<UploadResponse> => {
   const formData = new FormData();
   formData.append('file', file);
@@ -23,8 +46,18 @@ export const uploadPdf = async (file: File, year: number, roundNumber: number): 
   return response.data;
 };
 
-export const processBatch = async (batchId: number): Promise<{ status: string }> => {
-  const response = await apiClient.post<{ status: string }>(`/imports/${batchId}/process`);
+export const processBatch = async (batchId: number): Promise<ProcessBatchResponse> => {
+  const response = await apiClient.post<ProcessBatchResponse>(`/imports/${batchId}/process`);
+  return response.data;
+};
+
+export const getDbStatus = async (): Promise<DbStatus> => {
+  const response = await apiClient.get<DbStatus>('/imports/db-status');
+  return response.data;
+};
+
+export const resetDatabase = async (): Promise<ResetDbResponse> => {
+  const response = await apiClient.post<ResetDbResponse>('/imports/reset-database');
   return response.data;
 };
 

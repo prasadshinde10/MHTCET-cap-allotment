@@ -1,27 +1,75 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import {
+  UploadCloud,
+  Trash2,
+  CheckCircle2,
+  AlertTriangle,
+  Database,
+  ArrowRight,
+  RefreshCw,
+  FileText,
+  Building,
+  GraduationCap
+} from 'lucide-react';
 import { FileDropzone } from '../components/ui/FileDropzone';
 import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Select';
-import { uploadPdf, processBatch } from '../api/imports';
+import {
+  uploadPdf,
+  processBatch,
+  getDbStatus,
+  resetDatabase,
+  ProcessBatchResponse
+} from '../api/imports';
 
 export function ImportNewPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
   const [file, setFile] = useState<File | null>(null);
-  const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [year, setYear] = useState<number>(2026);
   const [round, setRound] = useState<number>(1);
   const [batchId, setBatchId] = useState<number | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [parseResult, setParseResult] = useState<ProcessBatchResponse | null>(null);
 
+  // Fetch live database statistics
+  const { data: dbStatus, refetch: refetchDbStatus, isFetching: isFetchingStats } = useQuery({
+    queryKey: ['dbStatus'],
+    queryFn: getDbStatus,
+    staleTime: 5000,
+  });
+
+  // Reset database mutation
+  const resetMutation = useMutation({
+    mutationFn: resetDatabase,
+    onSuccess: (data) => {
+      toast.success(data.message || 'Database reset successfully!');
+      setShowResetConfirm(false);
+      setParseResult(null);
+      setBatchId(null);
+      setFile(null);
+      refetchDbStatus();
+      queryClient.invalidateQueries({ queryKey: ['cutoffs'] });
+      queryClient.invalidateQueries({ queryKey: ['filterOptions'] });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.detail || error.message || 'Failed to reset database');
+    }
+  });
+
+  // Upload PDF mutation
   const uploadMutation = useMutation({
     mutationFn: () => {
-      if (!file) throw new Error('No file selected');
+      if (!file) throw new Error('Please select a PDF file first');
       return uploadPdf(file, year, round);
     },
     onSuccess: (data) => {
-      toast.success('File uploaded successfully');
+      toast.success('PDF uploaded successfully! Ready to parse.');
       setBatchId(data.import_batch_id);
     },
     onError: (error: any) => {
@@ -29,44 +77,219 @@ export function ImportNewPage() {
     }
   });
 
+  // Process batch mutation
   const processMutation = useMutation({
     mutationFn: () => {
-      if (!batchId) throw new Error('No batch selected');
+      if (!batchId) throw new Error('No batch selected for processing');
       return processBatch(batchId);
     },
     onMutate: () => {
       setIsProcessing(true);
     },
-    onSuccess: () => {
-      toast.success('Processing completed');
+    onSuccess: (data) => {
+      toast.success(`Parsing complete! Created ${data.records_created.toLocaleString()} cutoff records.`);
       setIsProcessing(false);
-      if (batchId) navigate(`/imports/${batchId}`);
+      setParseResult(data);
+      refetchDbStatus();
+      queryClient.invalidateQueries({ queryKey: ['cutoffs'] });
+      queryClient.invalidateQueries({ queryKey: ['filterOptions'] });
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.detail || error.message || 'Processing failed');
+      toast.error(error.response?.data?.detail || error.message || 'Parsing failed');
       setIsProcessing(false);
     }
   });
 
-  const years = Array.from({ length: 10 }, (_, i) => {
-    const y = new Date().getFullYear() - 2 + i;
-    return { value: y, label: String(y) };
-  });
-
-  const rounds = [
-    { value: 1, label: 'CAP Round I' },
-    { value: 2, label: 'CAP Round II' },
-    { value: 3, label: 'CAP Round III' },
-    { value: 4, label: 'CAP Round IV' },
+  const years = [
+    { value: 2026, label: '2026' },
+    { value: 2025, label: '2025' },
+    { value: 2024, label: '2024' },
+    { value: 2027, label: '2027' },
   ];
 
+  const rounds = [
+    { value: 1, label: 'CAP Round 1' },
+    { value: 2, label: 'CAP Round 2' },
+    { value: 3, label: 'CAP Round 3' },
+    { value: 4, label: 'CAP Round 4' },
+  ];
+
+  const handleStartAnother = () => {
+    setParseResult(null);
+    setBatchId(null);
+    setFile(null);
+  };
+
   return (
-    <div className="max-w-3xl mx-auto p-6 space-y-8">
-      <h1 className="text-2xl font-bold text-gray-900">Import New CAP Cutoffs</h1>
-      
-      {!batchId ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6">
-          <div className="grid grid-cols-2 gap-4">
+    <div className="max-w-4xl mx-auto p-6 space-y-8">
+      {/* Page Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200 pb-5">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <UploadCloud className="w-7 h-7 text-primary-600" />
+            PDF Parser & Real-Time Data Ingestion
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Upload official MHT-CET CAP Cutoff PDFs and extract real-time cutoff records into the database.
+          </p>
+        </div>
+      </div>
+
+      {/* Database Status & Clean Slate Control */}
+      <div className="bg-slate-900 text-white rounded-xl shadow-md p-5 border border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <Database className="w-4 h-4 text-primary-400" />
+              Active Database Records
+            </div>
+            <div className="mt-3 flex flex-wrap gap-4 text-sm">
+              <div className="bg-slate-800 px-3.5 py-2 rounded-lg border border-slate-700/60">
+                <span className="text-slate-400 block text-xs">Total Cutoffs</span>
+                <span className="font-bold text-lg text-emerald-400">
+                  {isFetchingStats ? '...' : (dbStatus?.total_cutoffs ?? 0).toLocaleString()}
+                </span>
+              </div>
+              <div className="bg-slate-800 px-3.5 py-2 rounded-lg border border-slate-700/60">
+                <span className="text-slate-400 block text-xs">Colleges</span>
+                <span className="font-bold text-lg text-sky-400">
+                  {isFetchingStats ? '...' : (dbStatus?.total_colleges ?? 0).toLocaleString()}
+                </span>
+              </div>
+              <div className="bg-slate-800 px-3.5 py-2 rounded-lg border border-slate-700/60">
+                <span className="text-slate-400 block text-xs">Courses</span>
+                <span className="font-bold text-lg text-indigo-400">
+                  {isFetchingStats ? '...' : (dbStatus?.total_courses ?? 0).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-center">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetchDbStatus()}
+              disabled={isFetchingStats}
+              className="text-slate-300 border-slate-700 hover:bg-slate-800"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isFetchingStats ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => setShowResetConfirm(true)}
+              className="bg-red-600/90 hover:bg-red-700 text-white text-xs"
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+              Clear / Reset Database
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Confirmation Modal for Resetting Database */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-red-100">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-base">Clear All Database Records?</h3>
+                <p className="text-xs text-red-600 font-medium">This will wipe cutoffs, colleges, and courses.</p>
+              </div>
+            </div>
+            <div className="text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
+              <p className="font-semibold text-amber-900">Safety Safeguards Active:</p>
+              <p>1. An automatic backup of your database will be preserved in storage.</p>
+              <p>2. Your admin account credentials (<span className="font-mono">admin</span> / <span className="font-mono">admin123</span>) will remain untouched.</p>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowResetConfirm(false)}
+                disabled={resetMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => resetMutation.mutate()}
+                isLoading={resetMutation.isPending}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                Yes, Clear Database
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Parsing Complete Results Card */}
+      {parseResult && (
+        <div className="bg-white rounded-xl shadow-sm border border-emerald-200 p-6 space-y-5">
+          <div className="flex items-center gap-3 text-emerald-700">
+            <CheckCircle2 className="w-8 h-8 text-emerald-600 flex-shrink-0" />
+            <div>
+              <h3 className="font-bold text-lg text-gray-900">PDF Ingestion Completed Successfully!</h3>
+              <p className="text-sm text-gray-600">
+                The PyMuPDF grid parser has extracted and populated the database with real-time cutoff records.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-emerald-50/60 rounded-lg p-4 border border-emerald-100">
+            <div>
+              <span className="text-xs text-gray-500 block">Pages Processed</span>
+              <span className="text-xl font-bold text-gray-900">{parseResult.pages_processed}</span>
+            </div>
+            <div>
+              <span className="text-xs text-gray-500 block">Records Created</span>
+              <span className="text-xl font-bold text-emerald-700">{parseResult.records_created.toLocaleString()}</span>
+            </div>
+            <div>
+              <span className="text-xs text-gray-500 block">Colleges Found</span>
+              <span className="text-xl font-bold text-sky-700">{parseResult.colleges_found ?? 'N/A'}</span>
+            </div>
+            <div>
+              <span className="text-xs text-gray-500 block">Courses Found</span>
+              <span className="text-xl font-bold text-indigo-700">{parseResult.courses_found ?? 'N/A'}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleStartAnother}
+            >
+              Parse Another PDF
+            </Button>
+            <Button
+              onClick={() => navigate('/search')}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              Inspect In Cutoff Search
+              <ArrowRight className="w-4 h-4 ml-1.5" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Upload and Parse Workflow */}
+      {!parseResult && !batchId && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
+          <div className="border-b border-gray-100 pb-3">
+            <h2 className="font-semibold text-gray-900 text-base">Step 1: Select CAP Round & Upload PDF</h2>
+            <p className="text-xs text-gray-500">Configure target admission year and upload the official PDF cutoff sheet.</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Select
               label="Admission Year"
               value={year}
@@ -80,42 +303,74 @@ export function ImportNewPage() {
               options={rounds}
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Upload PDF File
+              Cutoff PDF File
             </label>
             <FileDropzone onFileSelect={setFile} />
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex justify-end pt-2">
             <Button
               onClick={() => uploadMutation.mutate()}
               isLoading={uploadMutation.isPending}
               disabled={!file}
+              size="lg"
+              className="bg-primary-600 hover:bg-primary-700 text-white font-medium"
             >
+              <UploadCloud className="w-4 h-4 mr-2" />
               Upload PDF
             </Button>
           </div>
         </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6 text-center">
-          <h3 className="text-lg font-medium text-gray-900">Upload Successful</h3>
-          <p className="text-gray-500">
-            The file has been saved. Click the button below to start extracting cutoff records.
-            This may take a few minutes depending on the file size.
-          </p>
-          
-          <Button
-            onClick={() => processMutation.mutate()}
-            isLoading={isProcessing}
-            size="lg"
-            className="w-full sm:w-auto"
-          >
-            {isProcessing ? 'Processing PDF...' : 'Start Processing'}
-          </Button>
+      )}
+
+      {/* Step 2: Processing in progress or ready */}
+      {!parseResult && batchId && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 space-y-6 text-center">
+          <div className="mx-auto w-14 h-14 rounded-full bg-primary-50 flex items-center justify-center text-primary-600">
+            <FileText className="w-7 h-7" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold text-gray-900">
+              {isProcessing ? 'Parsing PDF in Real-Time...' : 'PDF Ready to Parse'}
+            </h3>
+            <p className="text-sm text-gray-500 max-w-md mx-auto">
+              {isProcessing
+                ? 'Extracting table matrices, college metadata, categories, ranks, and percentiles using PyMuPDF. Please keep this window open...'
+                : `Uploaded for Admission Year ${year}, CAP Round ${round}. Click below to execute extraction.`}
+            </p>
+          </div>
+
+          {isProcessing && (
+            <div className="flex flex-col items-center justify-center py-4 space-y-3">
+              <RefreshCw className="w-8 h-8 text-primary-600 animate-spin" />
+              <div className="text-xs text-primary-700 font-medium">Processing pages and committing cutoff batches...</div>
+            </div>
+          )}
+
+          <div className="flex justify-center gap-3 pt-2">
+            {!isProcessing && (
+              <Button
+                variant="outline"
+                onClick={() => setBatchId(null)}
+              >
+                Cancel / Choose Another File
+              </Button>
+            )}
+            <Button
+              onClick={() => processMutation.mutate()}
+              isLoading={isProcessing}
+              size="lg"
+              className="bg-primary-600 hover:bg-primary-700 text-white font-semibold px-8"
+            >
+              {isProcessing ? 'Parsing In Progress...' : 'Start Real-Time Parsing'}
+            </Button>
+          </div>
         </div>
       )}
     </div>
   );
 }
+export default ImportNewPage;

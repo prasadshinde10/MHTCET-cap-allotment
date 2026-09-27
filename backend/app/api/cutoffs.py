@@ -5,6 +5,7 @@ from sqlalchemy import select, desc, asc, func, or_
 from typing import List, Optional
 import io
 import csv
+import math
 
 from app.database import get_db
 from app.auth.security import get_current_admin
@@ -58,12 +59,24 @@ def get_cutoff_query(
         stmt = stmt.where(College.college_code == college_code)
 
     if course:
-        stmt = stmt.where(
-            or_(
-                Course.course_code.ilike(f"%{course}%"),
-                Course.course_name.ilike(f"%{course}%")
+        course_items = [c.strip() for c in course.split(',') if c.strip()]
+        if len(course_items) == 1:
+            c_val = course_items[0]
+            stmt = stmt.where(
+                or_(
+                    Course.course_code.ilike(f"%{c_val}%"),
+                    Course.course_name.ilike(f"%{c_val}%")
+                )
             )
-        )
+        elif len(course_items) > 1:
+            course_conditions = [
+                or_(
+                    Course.course_code.ilike(f"%{c_val}%"),
+                    Course.course_name.ilike(f"%{c_val}%")
+                )
+                for c_val in course_items
+            ]
+            stmt = stmt.where(or_(*course_conditions))
     elif course_code:
         stmt = stmt.where(Course.course_code == course_code)
 
@@ -90,14 +103,26 @@ def get_cutoff_query(
             )
 
     if city_district:
-        cd = city_district.strip()
-        stmt = stmt.where(
-            or_(
-                College.city.ilike(f"%{cd}%"),
-                College.district.ilike(f"%{cd}%"),
-                College.college_name.ilike(f"%{cd}%")
+        dist_items = [d.strip() for d in city_district.split(',') if d.strip()]
+        if len(dist_items) == 1:
+            cd = dist_items[0]
+            stmt = stmt.where(
+                or_(
+                    College.city.ilike(f"%{cd}%"),
+                    College.district.ilike(f"%{cd}%"),
+                    College.college_name.ilike(f"%{cd}%")
+                )
             )
-        )
+        elif len(dist_items) > 1:
+            dist_conditions = [
+                or_(
+                    College.city.ilike(f"%{cd}%"),
+                    College.district.ilike(f"%{cd}%"),
+                    College.college_name.ilike(f"%{cd}%")
+                )
+                for cd in dist_items
+            ]
+            stmt = stmt.where(or_(*dist_conditions))
 
     if seat_section:
         stmt = stmt.where(Cutoff.seat_section == seat_section)
@@ -123,7 +148,7 @@ def get_cutoff_query(
 @router.get("/", response_model=PaginatedResponse[CutoffListItem])
 def list_cutoffs(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=200),
+    page_size: int = Query(20, ge=1, le=500),
     year: Optional[int] = None,
     round_number: Optional[int] = None,
     cap_round_id: Optional[int] = None,
@@ -206,7 +231,9 @@ def list_cutoffs(
         cutoff_dict['percentile'] = float(cutoff.percentile) if cutoff.percentile is not None else None
         items.append(CutoffListItem(**cutoff_dict))
         
-    return PaginatedResponse.create(items=items, total=total, params=PaginationParams(page=page, page_size=page_size))
+    import math
+    total_pages = math.ceil(total / page_size) if page_size else 0
+    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size, total_pages=total_pages)
 
 
 @router.get("/export")

@@ -23,9 +23,16 @@ from app.schemas.imports import (
 from app.parser.importer import PDFImporter
 from app.services.import_service import ImportService
 from app.services.audit_service import log_audit
+from app.models.cutoff import Cutoff
+from app.models.college import College
+from app.models.course import Course
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 settings = get_settings()
+MAX_UPLOAD_SIZE_MB = getattr(settings, 'MAX_UPLOAD_SIZE_MB', 100)
 
 UPLOAD_DIRECTORY = Path(__file__).resolve().parent.parent.parent.parent / "storage" / "uploads"
 UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
@@ -59,7 +66,20 @@ def upload_pdf(
         select(ImportBatch).where(ImportBatch.file_hash == file_hash)
     ).scalar_one_or_none()
     if existing:
-        raise HTTPException(status_code=400, detail="File has already been uploaded")
+        if existing.status == "PENDING":
+            return UploadResponse(
+                import_batch_id=existing.id,
+                cap_round_id=existing.cap_round_id,
+                filename=existing.filename,
+                file_hash=existing.file_hash,
+                message="File ready for processing"
+            )
+        # Allow re-uploading to re-parse
+        db.execute(StagingCutoff.__table__.delete().where(StagingCutoff.import_batch_id == existing.id))
+        db.execute(ImportLog.__table__.delete().where(ImportLog.import_batch_id == existing.id))
+        db.execute(ParserError.__table__.delete().where(ParserError.import_batch_id == existing.id))
+        db.delete(existing)
+        db.commit()
 
     # Ensure CapRound exists
     cap_round = db.execute(
@@ -111,8 +131,8 @@ def process_batch(
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
     
-    if batch.status != "PENDING":
-        raise HTTPException(status_code=400, detail="Batch is not in PENDING state")
+    if batch.status == "PROCESSING":
+        raise HTTPException(status_code=400, detail="Batch is currently being processed")
 
     cap_round = db.get(CapRound, batch.cap_round_id)
     if not cap_round:
@@ -159,6 +179,8 @@ def process_batch(
             "status": batch.status,
             "pages_processed": batch.pages_processed,
             "records_created": batch.records_created,
+            "colleges_found": getattr(result, "colleges_found", 0),
+            "courses_found": getattr(result, "courses_found", 0),
             "warnings": batch.warning_count,
             "errors": batch.error_count
         }
@@ -208,6 +230,70 @@ def list_batches(
         page=page,
         page_size=page_size
     )
+
+
+@router.get("/db-status")
+def get_db_status(
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin)
+):
+    total_cutoffs = db.execute(select(func.count(Cutoff.id))).scalar() or 0
+    total_colleges = db.execute(select(func.count(College.id))).scalar() or 0
+    total_courses = db.execute(select(func.count(Course.id))).scalar() or 0
+    total_batches = db.execute(select(func.count(ImportBatch.id))).scalar() or 0
+    
+    return {
+        "total_cutoffs": total_cutoffs,
+        "total_colleges": total_colleges,
+        "total_courses": total_courses,
+        "total_batches": total_batches
+    }
+
+
+@router.post("/reset-database")
+def reset_database(
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin)
+):
+    """
+    Safely resets cutoff, course, college and import data for real-time testing.
+    Preserves admin_users credentials so admin can continue logging in seamlessly.
+    """
+    from app.database import engine
+    
+    db_file = Path(__file__).resolve().parent.parent.parent.parent / "cap_portal.db"
+    backup_dir = Path(__file__).resolve().parent.parent.parent.parent / "storage" / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    
+    backup_file_name = None
+    if db_file.exists():
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_file = backup_dir / f"cap_portal_backup_{timestamp}.db"
+        shutil.copy2(db_file, backup_file)
+        backup_file_name = backup_file.name
+        logger.info(f"Database backed up to {backup_file}")
+
+    with engine.begin() as conn:
+        for tbl in ["cutoffs", "courses", "colleges", "import_batches", "import_logs", "parser_errors", "staging_cutoffs", "audit_logs"]:
+            try:
+                conn.exec_driver_sql(f"DELETE FROM {tbl};")
+            except Exception as e:
+                logger.warning(f"Could not clear table {tbl}: {e}")
+        try:
+            conn.exec_driver_sql("DELETE FROM cutoff_records;")
+        except Exception:
+            pass
+        try:
+            conn.exec_driver_sql("UPDATE cap_rounds SET total_records = 0, total_pages = 0, processing_status = 'PENDING';")
+        except Exception:
+            pass
+
+    return {
+        "success": True,
+        "message": "Database cleared successfully. Admin credentials preserved.",
+        "backup_file": backup_file_name
+    }
+
 
 @router.get("/{batch_id}", response_model=ImportBatchDetail)
 def get_batch(
@@ -310,3 +396,4 @@ def delete_batch(
     log_audit(db, "DELETE_BATCH", "import_batches", batch_id, {})
 
     return {"message": "Batch deleted successfully"}
+
