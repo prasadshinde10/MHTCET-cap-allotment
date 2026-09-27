@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api import auth, dashboard, imports, cap_rounds, colleges, courses, cutoffs, analysis, parser_errors, audit_logs, settings
+from app.api import auth, dashboard, imports, cap_rounds, colleges, courses, cutoffs, analysis, parser_errors, audit_logs, settings, josaa
 
 api_router = APIRouter()
 
@@ -14,3 +14,4 @@ api_router.include_router(analysis.router, prefix='/analysis', tags=['analysis']
 api_router.include_router(parser_errors.router, prefix='/parser-errors', tags=['parser-errors'])
 api_router.include_router(audit_logs.router, prefix='/audit-logs', tags=['audit-logs'])
 api_router.include_router(settings.router, prefix='/settings', tags=['settings'])
+api_router.include_router(josaa.router, prefix='/josaa', tags=['josaa'])

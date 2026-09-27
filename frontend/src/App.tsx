@@ -4,6 +4,7 @@ import { AuthLayout } from './layouts/AuthLayout';
 import { AdminLayout } from './layouts/AdminLayout';
 import { LoginPage } from './pages/LoginPage';
 import { CutoffSearchPage } from './pages/CutoffSearchPage';
+import { JosaaSearchPage } from './pages/JosaaSearchPage';
 import { SearchHistoryPage } from './pages/SearchHistoryPage';
 import { ImportNewPage } from './pages/ImportNewPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -21,6 +22,7 @@ const App: React.FC = () => {
       {/* Admin App */}
       <Route element={<AdminLayout />}>
         <Route path="/search" element={<CutoffSearchPage />} />
+        <Route path="/josaa" element={<JosaaSearchPage />} />
         <Route path="/imports/new" element={<ImportNewPage />} />
         <Route path="/history" element={<SearchHistoryPage />} />
 

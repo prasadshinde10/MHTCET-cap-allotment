@@ -1,12 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getCutoffs, Cutoff } from '../api/cutoffs';
 import { getFilterOptions } from '../api/analysis';
 import { 
   Search, RotateCcw, Building2, BookOpen, MapPin, 
   Sparkles, Download, LayoutGrid, Table as TableIcon,
-  HelpCircle, AlertCircle, ArrowUpDown
+  HelpCircle, AlertCircle, ArrowUpDown, Award
 } from 'lucide-react';
 import SearchableSelect, { SearchableOption } from '../components/ui/SearchableSelect';
 import Select from '../components/ui/Select';
@@ -762,10 +762,18 @@ export const CutoffSearchPage: React.FC = () => {
             >
               <Sparkles className="w-4 h-4 text-indigo-300" />
               <span>MHT-CET (All India Cutoff)</span>
-              <span className="ml-1 text-[10px] bg-slate-800 text-indigo-300 px-2 py-0.5 rounded-full border border-slate-700">
-                6,564 Records
-              </span>
             </button>
+
+            <Link
+              to="/josaa"
+              className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-md text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all border border-transparent hover:border-slate-700"
+            >
+              <Award className="w-4 h-4 text-amber-400" />
+              <span>JoSAA (IIT / NIT / IIIT)</span>
+              <span className="ml-1 text-[10px] bg-slate-800 text-amber-300 px-2 py-0.5 rounded-full border border-slate-700">
+                Standalone DB
+              </span>
+            </Link>
           </div>
 
           <div className="text-right px-2 hidden lg:block">

@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Search, History, LogOut, GraduationCap, ShieldCheck, UploadCloud } from 'lucide-react';
+import { Search, History, LogOut, GraduationCap, ShieldCheck, UploadCloud, Award } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../utils/utils';
 
@@ -19,6 +19,12 @@ export const Sidebar: React.FC = () => {
       to: '/search?panel=all_india',
       icon: Search,
       badge: 'All India',
+    },
+    {
+      name: 'JoSAA (IIT / NIT / IIIT)',
+      to: '/josaa',
+      icon: Award,
+      badge: 'JoSAA',
     },
     {
       name: 'Upload & Parse PDF',

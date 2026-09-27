@@ -12,7 +12,8 @@ import {
   RefreshCw,
   FileText,
   Building,
-  GraduationCap
+  GraduationCap,
+  Award
 } from 'lucide-react';
 import { FileDropzone } from '../components/ui/FileDropzone';
 import { Button } from '../components/ui/Button';
@@ -24,6 +25,11 @@ import {
   resetDatabase,
   ProcessBatchResponse
 } from '../api/imports';
+import {
+  getJosaaStats,
+  resetJosaaDatabase,
+  reloadJosaaData
+} from '../api/josaa';
 
 export function ImportNewPage() {
   const navigate = useNavigate();
@@ -35,6 +41,7 @@ export function ImportNewPage() {
   const [batchId, setBatchId] = useState<number | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showJosaaResetConfirm, setShowJosaaResetConfirm] = useState(false);
   const [parseResult, setParseResult] = useState<ProcessBatchResponse | null>(null);
 
   // Fetch live database statistics
@@ -42,6 +49,42 @@ export function ImportNewPage() {
     queryKey: ['dbStatus'],
     queryFn: getDbStatus,
     staleTime: 5000,
+  });
+
+  // Fetch JoSAA database statistics
+  const { data: josaaStats, refetch: refetchJosaaStats, isFetching: isFetchingJosaaStats } = useQuery({
+    queryKey: ['josaaStats'],
+    queryFn: getJosaaStats,
+    staleTime: 5000,
+  });
+
+  // Reset JoSAA database mutation
+  const resetJosaaMutation = useMutation({
+    mutationFn: resetJosaaDatabase,
+    onSuccess: (data) => {
+      toast.success(data.message || 'JoSAA database wiped successfully!');
+      setShowJosaaResetConfirm(false);
+      refetchJosaaStats();
+      queryClient.invalidateQueries({ queryKey: ['josaaFilterOptions'] });
+      queryClient.invalidateQueries({ queryKey: ['josaaCutoffs'] });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.detail || error.message || 'Failed to reset JoSAA database');
+    }
+  });
+
+  // Reload JoSAA sample/official data mutation
+  const reloadJosaaMutation = useMutation({
+    mutationFn: reloadJosaaData,
+    onSuccess: (data) => {
+      toast.success(data.message || 'JoSAA data restored successfully!');
+      refetchJosaaStats();
+      queryClient.invalidateQueries({ queryKey: ['josaaFilterOptions'] });
+      queryClient.invalidateQueries({ queryKey: ['josaaCutoffs'] });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.detail || error.message || 'Failed to reload JoSAA data');
+    }
   });
 
   // Reset database mutation
@@ -188,6 +231,118 @@ export function ImportNewPage() {
           </div>
         </div>
       </div>
+
+      {/* JoSAA Standalone Database Status & Wipe Control */}
+      <div className="bg-slate-900 text-white rounded-xl shadow-md p-5 border border-indigo-950/80 bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-semibold text-indigo-400 uppercase tracking-wider">
+              <Award className="w-4 h-4 text-amber-400" />
+              JoSAA Independent Database (IIT / NIT / IIIT / GFTI)
+            </div>
+            <div className="mt-3 flex flex-wrap gap-4 text-sm">
+              <div className="bg-slate-800 px-3.5 py-2 rounded-lg border border-slate-700/60">
+                <span className="text-slate-400 block text-xs">JoSAA Cutoffs</span>
+                <span className="font-bold text-lg text-emerald-400">
+                  {isFetchingJosaaStats ? '...' : (josaaStats?.total_cutoffs ?? 0).toLocaleString()}
+                </span>
+              </div>
+              <div className="bg-slate-800 px-3.5 py-2 rounded-lg border border-slate-700/60">
+                <span className="text-slate-400 block text-xs">Institutes</span>
+                <span className="font-bold text-lg text-amber-400">
+                  {isFetchingJosaaStats ? '...' : (josaaStats?.total_institutes ?? 0).toLocaleString()}
+                </span>
+              </div>
+              <div className="bg-slate-800 px-3.5 py-2 rounded-lg border border-slate-700/60">
+                <span className="text-slate-400 block text-xs">Academic Programs</span>
+                <span className="font-bold text-lg text-indigo-400">
+                  {isFetchingJosaaStats ? '...' : (josaaStats?.total_programs ?? 0).toLocaleString()}
+                </span>
+              </div>
+              <div className="bg-slate-800 px-3.5 py-2 rounded-lg border border-slate-700/60">
+                <span className="text-slate-400 block text-xs">Categories</span>
+                <span className="font-bold text-lg text-sky-400">
+                  {isFetchingJosaaStats ? '...' : (josaaStats?.total_categories ?? 0).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-center flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetchJosaaStats()}
+              disabled={isFetchingJosaaStats}
+              className="text-slate-300 border-slate-700 hover:bg-slate-800"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isFetchingJosaaStats ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => reloadJosaaMutation.mutate()}
+              disabled={reloadJosaaMutation.isPending}
+              className="text-indigo-300 border-indigo-700/60 hover:bg-indigo-950/60 text-xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${reloadJosaaMutation.isPending ? 'animate-spin' : ''}`} />
+              Reload Official Registry
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => setShowJosaaResetConfirm(true)}
+              className="bg-red-600/90 hover:bg-red-700 text-white text-xs"
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+              Wipe JoSAA Database
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Confirmation Modal for Wiping JoSAA Database */}
+      {showJosaaResetConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-red-100">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-base">Wipe JoSAA Database Records?</h3>
+                <p className="text-xs text-red-600 font-medium">This will clear all JoSAA cutoff records, institutes, and programs.</p>
+              </div>
+            </div>
+            <div className="text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
+              <p className="font-semibold text-amber-900">Important Notes:</p>
+              <p>1. Only the independent <span className="font-mono">josaa.db</span> file will be wiped.</p>
+              <p>2. Your MHT-CET database (<span className="font-mono">cap_portal.db</span>) and admin credentials remain completely untouched.</p>
+              <p>3. You can click "Reload Official Registry" anytime to restore the 46+ institutes and seed cutoffs.</p>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowJosaaResetConfirm(false)}
+                disabled={resetJosaaMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => resetJosaaMutation.mutate()}
+                isLoading={resetJosaaMutation.isPending}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                Yes, Wipe JoSAA Data
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Confirmation Modal for Resetting Database */}
       {showResetConfirm && (
