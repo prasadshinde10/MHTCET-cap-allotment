@@ -3,6 +3,7 @@ export interface SearchHistoryFilters {
   course: string;
   collegeType: string;
   autonomyStatus?: string;
+  status?: string;
   category: string;
   reservation: string;
   gender: string;

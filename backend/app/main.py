@@ -28,6 +28,11 @@ async def lifespan(app: FastAPI):
 
     # Ensure database schema tables exist
     Base.metadata.create_all(bind=engine)
+    with engine.begin() as conn:
+        try:
+            conn.exec_driver_sql("ALTER TABLE import_batches ADD COLUMN total_pages INTEGER DEFAULT 0;")
+        except Exception:
+            pass # Column already exists
 
     # Seed admin user on startup
     db = SessionLocal()

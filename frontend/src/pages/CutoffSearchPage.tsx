@@ -107,6 +107,10 @@ export const CutoffSearchPage: React.FC = () => {
     const param = searchParams.get('course');
     return param ? param.split(',').map((s) => s.trim()).filter(Boolean) : [];
   });
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>(() => {
+    const param = searchParams.get('status');
+    return param ? param.split(',').map((s) => s.trim()).filter(Boolean) : [];
+  });
   const [collegeType, setCollegeType] = useState<string>(searchParams.get('collegeType') || '');
   const [autonomyStatus, setAutonomyStatus] = useState<string>(searchParams.get('autonomy') || '');
   const [casteCategory, setCasteCategory] = useState<string>(searchParams.get('category') || '');
@@ -130,6 +134,7 @@ export const CutoffSearchPage: React.FC = () => {
   useEffect(() => {
     const collegeParam = searchParams.get('college');
     const courseParam = searchParams.get('course');
+    const statusParam = searchParams.get('status');
     const typeParam = searchParams.get('collegeType');
     const autoParam = searchParams.get('autonomy');
     const catParam = searchParams.get('category');
@@ -141,7 +146,7 @@ export const CutoffSearchPage: React.FC = () => {
     const pctParam = searchParams.get('percentile');
 
     const hasAnyParam = Boolean(
-      collegeParam || courseParam || typeParam || autoParam || catParam || resParam || genParam || distParam || yearParam || roundParam || pctParam
+      collegeParam || courseParam || statusParam || typeParam || autoParam || catParam || resParam || genParam || distParam || yearParam || roundParam || pctParam
     );
 
     if (hasAnyParam) {
@@ -150,6 +155,9 @@ export const CutoffSearchPage: React.FC = () => {
       }
       if (courseParam !== null) {
         setSelectedCourses(courseParam ? courseParam.split(',').map((s) => s.trim()).filter(Boolean) : []);
+      }
+      if (statusParam !== null) {
+        setSelectedStatuses(statusParam ? statusParam.split(',').map((s) => s.trim()).filter(Boolean) : []);
       }
       if (typeParam !== null) setCollegeType(typeParam);
       if (autoParam !== null) setAutonomyStatus(autoParam);
@@ -182,18 +190,46 @@ export const CutoffSearchPage: React.FC = () => {
 
   // College metadata lookup map: code -> details (uses filterOptions which returns ALL colleges)
   const collegeMetaMap = useMemo(() => {
-    const map = new Map<string, { type: string; fundingType?: string; district?: string; city?: string }>();
+    const map = new Map<string, { type: string; fundingType?: string; status?: string; district?: string; city?: string }>();
     if (filterOptions?.colleges) {
       for (const col of filterOptions.colleges) {
         map.set(col.college_code, {
           type: col.college_type || 'Non-Autonomous',
           fundingType: col.funding_type || undefined,
+          status: col.status || col.funding_type || undefined,
           district: col.district || undefined,
           city: col.city || undefined,
         });
       }
     }
     return map;
+  }, [filterOptions]);
+
+  // Build searchable college status options dynamically from web-scraped profiles
+  const statusOptions: SearchableOption[] = useMemo(() => {
+    const list: SearchableOption[] = [{ value: '', label: 'All Statuses / Any' }];
+    if (filterOptions?.statuses && filterOptions.statuses.length > 0) {
+      filterOptions.statuses.forEach((st) => {
+        list.push({
+          value: st,
+          label: st,
+        });
+      });
+    } else {
+      [
+        'Un-Aided',
+        'Government',
+        'Government-Aided',
+        'University Department',
+        'University Managed',
+        'University Managed (Un-Aided)',
+        'University',
+        'Deemed University',
+      ].forEach((st) => {
+        list.push({ value: st, label: st });
+      });
+    }
+    return list;
   }, [filterOptions]);
 
   // Map of code -> college_name for active chips and display
@@ -443,14 +479,17 @@ export const CutoffSearchPage: React.FC = () => {
         // Determine college type and funding status
         const colMeta = item.college_code ? collegeMetaMap.get(item.college_code) : undefined;
         let effectiveType = colMeta?.type || 'Non-Autonomous';
-        if (item.college_name?.toLowerCase().includes('autonomous')) {
+        const colNameLower = item.college_name?.toLowerCase() || '';
+        if (colNameLower.includes('autonomous') && !colNameLower.includes('non-autonomous') && !colNameLower.includes('non autonomous')) {
           effectiveType = 'Autonomous';
         }
 
         const isGov =
           (colMeta?.fundingType && colMeta.fundingType.toLowerCase().includes('government')) ||
-          (item.college_name && item.college_name.toLowerCase().includes('government')) ||
+          (colMeta?.status && (colMeta.status.toLowerCase().includes('government') || colMeta.status.toLowerCase().includes('university'))) ||
           (item.college_name && (
+            item.college_name.toLowerCase().includes('government') ||
+            item.college_name.toLowerCase().includes('govt') ||
             item.college_name.toLowerCase().includes('vjti') ||
             item.college_name.toLowerCase().includes('university department') ||
             item.college_name.toLowerCase().includes('institute of chemical technology') ||
@@ -467,9 +506,23 @@ export const CutoffSearchPage: React.FC = () => {
           }
         }
 
+        // Filter by Status (web-scraped college profile status)
+        if (selectedStatuses.length > 0) {
+          const colStatus = colMeta?.status || (isGov ? 'Government' : 'Un-Aided');
+          const matchesStatus = selectedStatuses.some((st) => {
+            if (st.toLowerCase() === colStatus.toLowerCase()) return true;
+            if (st === 'Un-Aided' && (colStatus.toLowerCase().includes('un-aided') || colStatus.toLowerCase().includes('private'))) return true;
+            if (st === 'Government' && colStatus.toLowerCase().includes('government')) return true;
+            return false;
+          });
+          if (!matchesStatus) {
+            return;
+          }
+        }
+
         // Filter by Autonomy Status (Autonomous vs Non-Autonomous)
         if (autonomyStatus) {
-          const isAutonomous = effectiveType.toLowerCase().includes('autonomous');
+          const isAutonomous = effectiveType.toLowerCase().trim() === 'autonomous';
           if (autonomyStatus === 'Autonomous' && !isAutonomous) {
             return;
           }
@@ -543,7 +596,7 @@ export const CutoffSearchPage: React.FC = () => {
       // percentile_desc
       return pB - pA;
     });
-  }, [round1Data, round2Data, round3Data, round4Data, collegeMetaMap, collegeType, sortBy]);
+  }, [round1Data, round2Data, round3Data, round4Data, collegeMetaMap, collegeType, selectedStatuses, autonomyStatus, selectedColleges, sortBy]);
 
   // Filter grouped rows by quick search input
   const filteredGroupedRows = useMemo(() => {
@@ -571,6 +624,7 @@ export const CutoffSearchPage: React.FC = () => {
       course: selectedCourses.join(','),
       collegeType,
       autonomyStatus,
+      status: selectedStatuses.join(','),
       category: casteCategory,
       reservation: reservationType,
       gender,
@@ -588,6 +642,7 @@ export const CutoffSearchPage: React.FC = () => {
   const handleResetFilters = () => {
     setSelectedColleges([]);
     setSelectedCourses([]);
+    setSelectedStatuses([]);
     setCollegeType('');
     setAutonomyStatus('');
     setCasteCategory('');
@@ -611,6 +666,9 @@ export const CutoffSearchPage: React.FC = () => {
     });
     selectedCourses.forEach((c) => {
       chips.push({ id: `course:${c}`, label: 'Branch', value: c });
+    });
+    selectedStatuses.forEach((st) => {
+      chips.push({ id: `status:${st}`, label: 'Status', value: st });
     });
     if (collegeType) {
       chips.push({ id: 'collegeType', label: 'Type', value: collegeType });
@@ -640,7 +698,7 @@ export const CutoffSearchPage: React.FC = () => {
       chips.push({ id: 'percentile', label: 'Score', value: `≤ ${Number(studentPercentile).toFixed(4)}%` });
     }
     return chips;
-  }, [selectedColleges, selectedCourses, collegeType, autonomyStatus, casteCategory, reservationType, gender, selectedDistricts, districtOptions, capRound, studentPercentile]);
+  }, [selectedColleges, selectedCourses, selectedStatuses, collegeType, autonomyStatus, casteCategory, reservationType, gender, selectedDistricts, districtOptions, capRound, studentPercentile]);
 
   const handleRemoveChip = (id: string) => {
     if (id.startsWith('college:')) {
@@ -651,6 +709,11 @@ export const CutoffSearchPage: React.FC = () => {
     if (id.startsWith('course:')) {
       const c = id.replace('course:', '');
       setSelectedCourses((prev) => prev.filter((item) => item !== c));
+      return;
+    }
+    if (id.startsWith('status:')) {
+      const st = id.replace('status:', '');
+      setSelectedStatuses((prev) => prev.filter((item) => item !== st));
       return;
     }
     if (id.startsWith('district:')) {
@@ -835,9 +898,13 @@ export const CutoffSearchPage: React.FC = () => {
               type="button"
               onClick={() => {
                 setActivePanel('ALL_INDIA');
+                setCasteCategory('');
+                setReservationType('');
                 setSearchParams((prev) => {
                   const p = new URLSearchParams(prev);
                   p.set('panel', 'all_india');
+                  p.delete('category');
+                  p.delete('reservation');
                   return p;
                 });
               }}
@@ -970,18 +1037,26 @@ export const CutoffSearchPage: React.FC = () => {
 
           {/* Section B: Student Reservation & Caste */}
           <div>
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-primary-600" />
-              Category & Reservation Quota
-            </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-primary-600" />
+                Category & Reservation Quota
+              </h3>
+              {activePanel === 'ALL_INDIA' && (
+                <span className="text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                  ℹ️ All India Quota is purely merit-based (JEE Main). State caste & reservation quotas do not apply.
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {/* Caste Category */}
               <div>
                 <Select
                   label="Caste Category"
-                  value={casteCategory}
+                  value={activePanel === 'ALL_INDIA' ? '' : casteCategory}
                   onChange={(e) => setCasteCategory(e.target.value)}
                   options={CASTE_CATEGORIES}
+                  disabled={activePanel === 'ALL_INDIA'}
                 />
               </div>
 
@@ -989,9 +1064,10 @@ export const CutoffSearchPage: React.FC = () => {
               <div>
                 <Select
                   label="Reservation Type"
-                  value={reservationType}
+                  value={activePanel === 'ALL_INDIA' ? '' : reservationType}
                   onChange={(e) => setReservationType(e.target.value)}
                   options={RESERVATION_TYPES}
+                  disabled={activePanel === 'ALL_INDIA'}
                 />
               </div>
 
@@ -1033,14 +1109,21 @@ export const CutoffSearchPage: React.FC = () => {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* College Type (Govt / Private) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Status (Multi-Select with Checkboxes from Web-Scraped Institute Profiles) */}
               <div>
-                <Select
-                  label="College Type"
-                  value={collegeType}
-                  onChange={(e) => setCollegeType(e.target.value)}
-                  options={COLLEGE_TYPES}
+                <SearchableSelect
+                  label="Status (College Profile)"
+                  placeholder="Select college status..."
+                  options={statusOptions}
+                  multiple={true}
+                  values={selectedStatuses}
+                  onMultiChange={setSelectedStatuses}
+                  helperText={
+                    selectedStatuses.length > 0
+                      ? `${selectedStatuses.length} status(es) selected`
+                      : 'Web-scraped profile statuses (Un-Aided, Govt, etc.)'
+                  }
                 />
               </div>
 

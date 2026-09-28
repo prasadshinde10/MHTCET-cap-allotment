@@ -35,6 +35,7 @@ class CollegeOption(BaseModel):
     district: Optional[str] = None
     college_type: Optional[str] = None
     funding_type: Optional[str] = None
+    status: Optional[str] = None
 
 class CourseOption(BaseModel):
     course_code: str
@@ -47,6 +48,7 @@ class FilterOptions(BaseModel):
     seat_sections: List[str]
     stages: List[str]
     cities_districts: List[str]
+    statuses: List[str] = []
     colleges: List[CollegeOption]
     courses: List[CourseOption]
 

@@ -28,6 +28,7 @@ class ImportBatchListItem(BaseModel):
     round_number: int | None = None
     filename: str
     status: str
+    total_pages: int = 0
     pages_processed: int
     records_created: int
     records_rejected: int

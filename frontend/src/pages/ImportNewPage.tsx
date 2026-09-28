@@ -23,6 +23,7 @@ import {
   processBatch,
   getDbStatus,
   resetDatabase,
+  getImportBatchDetail,
   ProcessBatchResponse
 } from '../api/imports';
 import {
@@ -43,6 +44,22 @@ export function ImportNewPage() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showJosaaResetConfirm, setShowJosaaResetConfirm] = useState(false);
   const [parseResult, setParseResult] = useState<ProcessBatchResponse | null>(null);
+
+  // Poll real-time progress during PDF extraction
+  const { data: batchProgress } = useQuery({
+    queryKey: ['importProgress', batchId],
+    queryFn: () => getImportBatchDetail(batchId!),
+    enabled: !!batchId && isProcessing,
+    refetchInterval: isProcessing ? 800 : false,
+  });
+
+  const totalPages = batchProgress?.total_pages || 0;
+  const pagesProcessed = batchProgress?.pages_processed || 0;
+  const recordsCreated = batchProgress?.records_created || 0;
+
+  const progressPercent = totalPages > 0
+    ? Math.min(100, Math.round((pagesProcessed / totalPages) * 100))
+    : (isProcessing ? 4 : 0);
 
   // Fetch live database statistics
   const { data: dbStatus, refetch: refetchDbStatus, isFetching: isFetchingStats } = useQuery({
@@ -489,19 +506,79 @@ export function ImportNewPage() {
           </div>
           <div className="space-y-2">
             <h3 className="text-xl font-bold text-gray-900">
-              {isProcessing ? 'Parsing PDF in Real-Time...' : 'PDF Ready to Parse'}
+              {isProcessing ? 'Parsing PDF & Ingesting Cutoff Data...' : 'PDF Ready to Parse'}
             </h3>
             <p className="text-sm text-gray-500 max-w-md mx-auto">
               {isProcessing
-                ? 'Extracting table matrices, college metadata, categories, ranks, and percentiles using PyMuPDF. Please keep this window open...'
+                ? 'Extracting table matrices, college metadata, categories, ranks, and percentiles using PyMuPDF.'
                 : `Uploaded for Admission Year ${year}, CAP Round ${round}. Click below to execute extraction.`}
             </p>
           </div>
 
+          {/* Real-time Progress Bar & Statistics */}
           {isProcessing && (
-            <div className="flex flex-col items-center justify-center py-4 space-y-3">
-              <RefreshCw className="w-8 h-8 text-primary-600 animate-spin" />
-              <div className="text-xs text-primary-700 font-medium">Processing pages and committing cutoff batches...</div>
+            <div className="bg-slate-900 text-white rounded-xl p-6 border border-slate-800 space-y-4 text-left max-w-2xl mx-auto shadow-lg">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 font-medium text-emerald-400">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  </span>
+                  Real-Time Parsing Active
+                </div>
+                <span className="font-semibold text-slate-300">
+                  {progressPercent}% Complete ({pagesProcessed} / {totalPages > 0 ? totalPages : '...'} Pages)
+                </span>
+              </div>
+
+              {/* Animated Progress Bar */}
+              <div className="w-full bg-slate-800 rounded-full h-4 overflow-hidden border border-slate-700 relative shadow-inner">
+                <div
+                  className="bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 h-full transition-all duration-300 ease-out flex items-center justify-end pr-2 text-[10px] font-bold text-white shadow-sm"
+                  style={{ width: `${Math.max(progressPercent, 4)}%` }}
+                >
+                  {progressPercent >= 10 && `${progressPercent}%`}
+                </div>
+              </div>
+
+              {/* Status Message */}
+              <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="w-3.5 h-3.5 text-primary-400 animate-spin flex-shrink-0" />
+                  <span className="truncate">
+                    {progressPercent < 10
+                      ? 'Initializing PDF grid layout parser...'
+                      : progressPercent < 95
+                      ? `Scraping & extracting cutoffs from page ${pagesProcessed} of ${totalPages}...`
+                      : 'Finalizing database commits & institute metadata...'}
+                  </span>
+                </div>
+                <span className="font-mono text-emerald-400 text-xs font-semibold whitespace-nowrap ml-2">
+                  {recordsCreated.toLocaleString()} records extracted
+                </span>
+              </div>
+
+              {/* Mini Stats Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
+                <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700/60">
+                  <span className="text-[11px] text-slate-400 block">Pages Processed</span>
+                  <span className="text-base font-bold text-slate-100">
+                    {pagesProcessed} / {totalPages > 0 ? totalPages : '...'}
+                  </span>
+                </div>
+                <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700/60">
+                  <span className="text-[11px] text-slate-400 block">Cutoff Records</span>
+                  <span className="text-base font-bold text-emerald-400">
+                    {recordsCreated.toLocaleString()}
+                  </span>
+                </div>
+                <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700/60 col-span-2 sm:col-span-1">
+                  <span className="text-[11px] text-slate-400 block">Status</span>
+                  <span className="text-xs font-semibold text-sky-400 uppercase tracking-wide">
+                    PROCESSING
+                  </span>
+                </div>
+              </div>
             </div>
           )}
 

@@ -14,6 +14,7 @@ export interface ImportBatch {
   round_number: number | null;
   filename: string;
   status: string;
+  total_pages: number;
   pages_processed: number;
   records_created: number;
   records_rejected: number;

@@ -59,35 +59,27 @@ def get_cutoff_query(
     if cap_round_id is not None:
         stmt = stmt.where(Cutoff.cap_round_id == cap_round_id)
         
-    if college_code:
-        code_items = [c.strip() for c in college_code.split(',') if c.strip()]
-        if len(code_items) == 1:
-            stmt = stmt.where(College.college_code == code_items[0])
-        elif len(code_items) > 1:
-            stmt = stmt.where(College.college_code.in_(code_items))
-    elif college:
-        college_items = [c.strip() for c in college.split(',') if c.strip()]
-        if all(re.match(r'^\d{4,5}[A-Za-z]?$', c) for c in college_items):
-            if len(college_items) == 1:
-                stmt = stmt.where(College.college_code == college_items[0])
+    college_param = college_code or college
+    if college_param:
+        college_items = [c.strip() for c in college_param.split(',') if c.strip()]
+        dte_codes = [c for c in college_items if re.match(r'^\d{4,5}[A-Za-z]?$', c)]
+        name_queries = [c for c in college_items if not re.match(r'^\d{4,5}[A-Za-z]?$', c)]
+
+        conds = []
+        if dte_codes:
+            if len(dte_codes) == 1:
+                conds.append(College.college_code == dte_codes[0])
             else:
-                stmt = stmt.where(College.college_code.in_(college_items))
-        else:
-            clean_name = college.strip()
-            exact_match = db.query(College.id).filter(College.college_name.ilike(clean_name)).first()
-            if exact_match:
-                stmt = stmt.where(College.college_name.ilike(clean_name))
-            else:
-                college_conditions = [
-                    or_(
-                        College.college_code == c_val,
-                        College.college_name == c_val,
-                        College.college_name.ilike(f"%{c_val}%"),
-                        College.college_code.ilike(f"%{c_val}%")
-                    )
-                    for c_val in college_items
-                ]
-                stmt = stmt.where(or_(*college_conditions))
+                conds.append(College.college_code.in_(dte_codes))
+        for nq in name_queries:
+            conds.append(
+                or_(
+                    College.college_code == nq,
+                    College.college_name.ilike(f"%{nq}%")
+                )
+            )
+        if conds:
+            stmt = stmt.where(or_(*conds))
 
     if course:
         course_items = [c.strip() for c in course.split(',') if c.strip()]

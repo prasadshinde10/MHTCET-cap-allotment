@@ -1,12 +1,45 @@
+# Virtual environments
 venv/
+.venv/
+env/
+
+# Python cache & build outputs
 __pycache__/
 *.pyc
-.DS_Store
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Databases & SQLite files (Do not push heavy local DB binaries)
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# PDF files & local storage uploads/backups
+*.pdf
+storage/
+uploads/
+backups/
+
+# Node & Frontend build artifacts
 node_modules/
 frontend/node_modules/
 dist/
-*.bak
+build/
+.output/
+
+# Environment files & secret keys
 .env
 backend/.env
-storage/
-backend/cutoff.db
+*.env.local
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+*.bak

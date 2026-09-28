@@ -144,22 +144,38 @@ def get_filter_options(
     districts = [r[0] for r in db.execute(select(College.district).distinct()).all() if r[0]]
     cities_districts = sorted(list(set(cities + districts)))
 
+    # Collect unique web-scraped statuses
+    from app.parser.institutes_data import INSTITUTES_DATA
+    scraped_statuses = set(v.get("status") for v in INSTITUTES_DATA.values() if v.get("status"))
+    try:
+        from sqlalchemy import text
+        db_statuses = [r[0] for r in db.execute(text("SELECT DISTINCT status FROM institutes WHERE status IS NOT NULL AND status != ''")).all() if r[0]]
+        scraped_statuses.update(db_statuses)
+    except Exception:
+        pass
+    statuses = sorted(list(scraped_statuses))
+
     # Colleges
     college_rows = db.execute(
         select(College.college_code, College.college_name, College.city, College.district, College.college_type, College.funding_type)
         .order_by(College.college_name.asc())
     ).all()
-    colleges = [
-        CollegeOption(
-            college_code=r[0],
-            college_name=r[1],
-            city=r[2],
-            district=r[3],
-            college_type=r[4],
-            funding_type=r[5]
+    colleges = []
+    for r in college_rows:
+        code = str(r[0]).zfill(5)
+        inst_meta = INSTITUTES_DATA.get(code)
+        col_status = inst_meta.get("status") if inst_meta else r[5]
+        colleges.append(
+            CollegeOption(
+                college_code=r[0],
+                college_name=r[1],
+                city=r[2],
+                district=r[3],
+                college_type=r[4],
+                funding_type=r[5],
+                status=col_status
+            )
         )
-        for r in college_rows
-    ]
 
     # Courses (distinct by course_name)
     course_rows = db.execute(
@@ -182,6 +198,7 @@ def get_filter_options(
         seat_sections=seat_sections,
         stages=stages,
         cities_districts=cities_districts,
+        statuses=statuses,
         colleges=colleges,
         courses=courses
     )

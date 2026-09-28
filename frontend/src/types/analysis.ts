@@ -5,6 +5,7 @@ export interface CollegeOption {
   district?: string;
   college_type?: string;
   funding_type?: string;
+  status?: string;
 }
 
 export interface CourseOption {
@@ -19,6 +20,7 @@ export interface FilterOptions {
   seat_sections: string[];
   stages: string[];
   cities_districts: string[];
+  statuses?: string[];
   colleges: CollegeOption[];
   courses: CourseOption[];
 }

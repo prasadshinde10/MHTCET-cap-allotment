@@ -211,7 +211,15 @@ class PDFImporter:
         from app.parser.all_india_parser import parse_page_words
 
         num_pages = len(doc)
-        result.pages_processed = num_pages
+        result.pages_processed = 0
+
+        # Initialize real-time batch progress tracking
+        batch = self.db.get(ImportBatch, self.batch_id)
+        if batch:
+            batch.total_pages = num_pages
+            batch.pages_processed = 0
+            batch.status = "PROCESSING"
+            self.db.commit()
 
         new_cutoffs: List[Cutoff] = []
         raw_ai_records: List[Dict[str, Any]] = []
@@ -220,16 +228,14 @@ class PDFImporter:
         for page_idx in range(num_pages):
             page = doc[page_idx]
             words = page.get_text("words")
-            if not words:
-                continue
-
-            page_recs = parse_page_words(
-                words=words,
-                cap_round=self.round_number,
-                academic_year=acad_year,
-                source_file=pdf_path.name,
-                page_number=page_idx + 1
-            )
+            if words:
+                page_recs = parse_page_words(
+                    words=words,
+                    cap_round=self.round_number,
+                    academic_year=acad_year,
+                    source_file=pdf_path.name,
+                    page_number=page_idx + 1
+                )
 
             for rec in page_recs:
                 inst_code = str(rec.get("institute_code", "")).strip()
@@ -317,6 +323,14 @@ class PDFImporter:
                     result.records_created += len(new_cutoffs)
                     new_cutoffs = []
 
+            # Update real-time progress for each page
+            result.pages_processed = page_idx + 1
+            batch = self.db.get(ImportBatch, self.batch_id)
+            if batch:
+                batch.pages_processed = page_idx + 1
+                batch.records_created = result.records_created + len(new_cutoffs)
+                self.db.commit()
+
         if new_cutoffs:
             self.db.bulk_save_objects(new_cutoffs)
             self.db.commit()
@@ -365,7 +379,15 @@ class PDFImporter:
 
         doc = fitz.open(str(pdf_path))
         num_pages = len(doc)
-        result.pages_processed = num_pages
+        result.pages_processed = 0
+
+        # Initialize real-time batch progress tracking
+        batch = self.db.get(ImportBatch, self.batch_id)
+        if batch:
+            batch.total_pages = num_pages
+            batch.pages_processed = 0
+            batch.status = "PROCESSING"
+            self.db.commit()
 
         # Pre-cache existing colleges and courses to minimize DB queries
         college_cache: Dict[str, College] = {}
@@ -578,6 +600,13 @@ class PDFImporter:
                             result.warnings += 1
 
                 prev_table_bottom = tab_bottom
+
+            # Update real-time progress for each page
+            result.pages_processed = page_idx + 1
+            if batch:
+                batch.pages_processed = page_idx + 1
+                batch.records_created = result.records_created + len(new_cutoffs)
+                self.db.commit()
 
         # Commit remaining records
         if new_cutoffs:

@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from app.config import get_settings
 
@@ -11,6 +11,7 @@ connect_args = {}
 db_url = settings.DATABASE_URL
 if db_url.startswith("sqlite"):
     connect_args["check_same_thread"] = False
+    connect_args["timeout"] = 30.0
     # If using relative sqlite path, resolve to project root directory
     if "sqlite:///./" in db_url:
         db_filename = db_url.split("sqlite:///./")[-1]
@@ -20,6 +21,13 @@ if db_url.startswith("sqlite"):
         db_file = Path(__file__).resolve().parent.parent.parent / "cap_portal.db"
         db_url = f"sqlite:///{db_file.as_posix()}"
     engine = create_engine(db_url, connect_args=connect_args)
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.close()
 else:
     engine = create_engine(db_url, pool_pre_ping=True)
 
@@ -31,3 +39,4 @@ def get_db():
         yield db
     finally:
         db.close()
+

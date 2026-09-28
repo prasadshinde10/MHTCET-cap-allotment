@@ -273,24 +273,24 @@ def reset_database(
         backup_file_name = backup_file.name
         logger.info(f"Database backed up to {backup_file}")
 
-    with engine.begin() as conn:
-        for tbl in ["cutoffs", "courses", "colleges", "import_batches", "import_logs", "parser_errors", "staging_cutoffs", "audit_logs"]:
-            try:
-                conn.exec_driver_sql(f"DELETE FROM {tbl};")
-            except Exception as e:
-                logger.warning(f"Could not clear table {tbl}: {e}")
+    import sqlite3
+    db_path = Path(__file__).resolve().parent.parent.parent.parent / "cap_portal.db"
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
+    cursor = conn.cursor()
+    for tbl in ["cutoffs", "courses", "colleges", "import_batches", "import_logs", "parser_errors", "staging_cutoffs", "cutoff_records", "all_india_cutoff_records"]:
         try:
-            conn.exec_driver_sql("DELETE FROM cutoff_records;")
-        except Exception:
-            pass
-        try:
-            conn.exec_driver_sql("DELETE FROM all_india_cutoff_records;")
-        except Exception:
-            pass
-        try:
-            conn.exec_driver_sql("UPDATE cap_rounds SET total_records = 0, total_pages = 0, processing_status = 'PENDING';")
-        except Exception:
-            pass
+            cursor.execute(f"DELETE FROM {tbl};")
+        except Exception as e:
+            logger.warning(f"Could not clear table {tbl}: {e}")
+
+    try:
+        cursor.execute("UPDATE cap_rounds SET total_records = 0, total_pages = 0, processing_status = 'PENDING';")
+    except Exception:
+        pass
+
+    conn.commit()
+    conn.close()
+    db.expire_all()
 
     return {
         "success": True,
