@@ -318,13 +318,13 @@ export const JosaaSearchPage: React.FC = () => {
   const getInstituteTypeBadge = (type: string) => {
     switch (type.toUpperCase()) {
       case 'IIT':
-        return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">IIT</span>;
+        return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#EAF3FF] text-[#123B66] border border-[#ADCFFF]">IIT</span>;
       case 'NIT':
-        return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">NIT</span>;
+        return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#EAF3FF] text-[#1769D2] border border-[#ADCFFF]">NIT</span>;
       case 'IIIT':
-        return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-200">IIIT</span>;
+        return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F0F4F8] text-[#172B4D] border border-[#D9E2EC]">IIIT</span>;
       default:
-        return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">GFTI</span>;
+        return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F0F4F8] text-[#5B6B7F] border border-[#D9E2EC]">GFTI</span>;
     }
   };
 
@@ -333,26 +333,26 @@ export const JosaaSearchPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white border border-[#D9E2EC] rounded-xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2.5">
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">
+            <h1 className="text-xl font-bold tracking-tight text-[#172B4D]">
               JoSAA Admissions Cutoff Explorer
             </h1>
-            <Badge variant="warning" className="text-[10px] uppercase tracking-wider font-semibold">
-              Standalone DB
-            </Badge>
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#EAF3FF] text-[#123B66] border border-[#ADCFFF] uppercase tracking-wider">
+              Independent Module
+            </span>
           </div>
-          <p className="text-xs text-slate-500 max-w-2xl">
+          <p className="text-xs text-[#5B6B7F] max-w-2xl">
             Search official JoSAA opening and closing ranks for IITs, NITs, IIITs, and Other-GFTIs. Filter by CAP Round, Institute Type, Program, Category, and Rank.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="bg-slate-50 border border-slate-200/80 rounded-lg px-3 py-1.5 text-right">
-            <div className="text-[10px] text-slate-400 font-medium">Database Status</div>
-            <div className="text-xs font-semibold text-slate-700 flex items-center gap-1.5 justify-end">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <div className="bg-[#F0F4F8] border border-[#D9E2EC] rounded-lg px-3 py-1.5 text-right">
+            <div className="text-[10px] text-[#5B6B7F] font-medium">Database Status</div>
+            <div className="text-xs font-semibold text-[#172B4D] flex items-center gap-1.5 justify-end">
+              <span className="w-2 h-2 rounded-full bg-[#16845B]" />
               <span>{filterOptions?.institutes?.length || 0} Institutes • {filterOptions?.rounds?.length || 0} Rounds</span>
             </div>
           </div>
@@ -362,7 +362,7 @@ export const JosaaSearchPage: React.FC = () => {
             size="sm"
             onClick={() => reloadMutation.mutate()}
             disabled={reloadMutation.isPending}
-            className="text-xs text-slate-700 hover:text-slate-900 h-8"
+            className="text-xs h-8"
             title="Restore official institutes registry and sample cutoffs"
           >
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${reloadMutation.isPending ? 'animate-spin' : ''}`} />
@@ -384,24 +384,24 @@ export const JosaaSearchPage: React.FC = () => {
 
       {/* Wipe Confirmation Modal */}
       {showWipeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 border border-slate-200">
-            <div className="flex items-center gap-3 text-red-600">
-              <div className="w-10 h-10 rounded-full bg-red-50 border border-red-200/80 flex items-center justify-center flex-shrink-0">
-                <AlertTriangle className="w-5 h-5 text-red-600" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B2545]/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 border border-[#D9E2EC]">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-[#FDF2F2] border border-[#F8B4B4] flex items-center justify-center flex-shrink-0 text-[#C53030]">
+                <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900 text-base">Wipe JoSAA Database Records?</h3>
-                <p className="text-xs text-red-600 font-medium">This will clear all JoSAA cutoff records and institutes.</p>
+                <h3 className="font-bold text-[#172B4D] text-base">Wipe JoSAA Database Records?</h3>
+                <p className="text-xs text-[#C53030] font-medium">This will clear all JoSAA cutoff records and institutes.</p>
               </div>
             </div>
-            <div className="text-xs text-slate-600 bg-amber-50/80 border border-amber-200/80 rounded-lg p-3 space-y-1">
-              <p className="font-semibold text-amber-900">Important Notes:</p>
-              <p>1. Only the independent <span className="font-mono font-semibold">josaa.db</span> file will be cleared.</p>
+            <div className="text-xs text-[#5B6B7F] bg-[#FEF7E6] border border-[#F7D070] rounded-lg p-3 space-y-1">
+              <p className="font-semibold text-[#B7791F]">Important Notes:</p>
+              <p>1. Only the independent <span className="font-mono font-semibold text-[#172B4D]">josaa.db</span> file will be cleared.</p>
               <p>2. Your MHT-CET database and admin account remain completely unaffected.</p>
               <p>3. You can click "Restore Data" anytime to reload the official institute registry and cutoffs.</p>
             </div>
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#D9E2EC]">
               <Button
                 variant="outline"
                 size="sm"
@@ -426,49 +426,49 @@ export const JosaaSearchPage: React.FC = () => {
       )}
 
       {/* Multi-Panel Switcher Navigation */}
-      <div className="bg-slate-100/90 border border-slate-200/80 rounded-xl p-1.5 flex flex-col md:flex-row items-center justify-between gap-2 shadow-xs">
+      <div className="bg-[#F0F4F8] border border-[#D9E2EC] rounded-xl p-1.5 flex flex-col md:flex-row items-center justify-between gap-2 shadow-xs">
         <div className="flex items-center gap-1 w-full md:w-auto">
           <Link
             to="/search?panel=state"
-            className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-white/50 transition-all border border-transparent"
+            className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-[#5B6B7F] hover:text-[#172B4D] hover:bg-white/60 transition-all border border-transparent"
           >
-            <Building2 className="w-3.5 h-3.5 text-slate-400" />
+            <Building2 className="w-3.5 h-3.5 text-[#5B6B7F]" />
             <span>MHT-CET (Maharashtra State)</span>
           </Link>
 
           <Link
             to="/search?panel=all_india"
-            className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-white/50 transition-all border border-transparent"
+            className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-[#5B6B7F] hover:text-[#172B4D] hover:bg-white/60 transition-all border border-transparent"
           >
-            <Sparkles className="w-3.5 h-3.5 text-slate-400" />
+            <Sparkles className="w-3.5 h-3.5 text-[#5B6B7F]" />
             <span>MHT-CET (All India Cutoff)</span>
           </Link>
 
-          <div className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-white text-slate-900 shadow-xs border border-slate-200/80">
-            <Award className="w-3.5 h-3.5 text-amber-500" />
+          <div className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-white text-[#123B66] shadow-xs border border-[#D9E2EC]">
+            <Award className="w-3.5 h-3.5 text-[#1769D2]" />
             <span>JoSAA (IIT / NIT / IIIT)</span>
-            <span className="ml-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
+            <span className="ml-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-[#EAF3FF] text-[#123B66] border border-[#ADCFFF]">
               Active Panel
             </span>
           </div>
         </div>
 
-        <div className="hidden lg:flex items-center gap-2 px-3 py-1 bg-white/70 border border-slate-200/60 rounded-lg text-xs">
-          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-          <span className="text-slate-600 font-medium">
+        <div className="hidden lg:flex items-center gap-2 px-3 py-1 bg-white border border-[#D9E2EC] rounded-lg text-xs">
+          <span className="w-2 h-2 rounded-full bg-[#1769D2]" />
+          <span className="text-[#5B6B7F] font-medium">
             National Institutes Cutoff Database (IIT, NIT, IIIT & GFTI Ranks)
           </span>
         </div>
       </div>
 
       {/* Filter Section */}
-      <div className="bg-white rounded-xl shadow-xs border border-slate-200/90 overflow-hidden">
-        <div className="px-5 py-3.5 bg-slate-50/60 border-b border-slate-200/80 flex items-center justify-between">
+      <div className="bg-white rounded-xl shadow-xs border border-[#D9E2EC] overflow-hidden">
+        <div className="px-5 py-3.5 bg-[#F0F4F8] border-b border-[#D9E2EC] flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <SlidersHorizontal className="w-3.5 h-3.5 text-slate-600" />
-            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Counselling Search Filters</span>
+            <SlidersHorizontal className="w-3.5 h-3.5 text-[#123B66]" />
+            <span className="text-xs font-bold text-[#172B4D] uppercase tracking-wider">Counselling Search Filters</span>
           </div>
-          <div className="text-xs text-slate-400">
+          <div className="text-xs text-[#5B6B7F]">
             All JoSAA cutoffs are reported as exact ranks (Opening & Closing)
           </div>
         </div>
@@ -546,8 +546,8 @@ export const JosaaSearchPage: React.FC = () => {
             />
 
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                Candidate JEE Rank <span className="text-[11px] text-slate-400 font-normal">(Optional Eligibility Filter)</span>
+              <label className="block text-xs font-medium text-[#172B4D] mb-1.5">
+                Candidate JEE Rank <span className="text-[11px] text-[#5B6B7F] font-normal">(Optional Eligibility Filter)</span>
               </label>
               <div className="relative">
                 <input
@@ -556,19 +556,19 @@ export const JosaaSearchPage: React.FC = () => {
                   placeholder="e.g. 2500"
                   value={candidateRank}
                   onChange={(e) => setCandidateRank(e.target.value)}
-                  className="w-full h-9 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 transition-all shadow-xs"
+                  className="w-full h-9 px-3 py-1.5 bg-white border border-[#D9E2EC] rounded-lg text-xs font-mono text-[#172B4D] placeholder:text-[#5B6B7F] focus:outline-none focus:ring-2 focus:ring-[#1769D2]/20 focus:border-[#1769D2] transition-all shadow-xs"
                 />
                 {candidateRank && (
                   <button
                     type="button"
                     onClick={() => setCandidateRank('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#5B6B7F] hover:text-[#172B4D] text-xs"
                   >
                     ✕
                   </button>
                 )}
               </div>
-              <p className="mt-1 text-[11px] text-slate-500">
+              <p className="mt-1 text-[11px] text-[#5B6B7F]">
                 Filters to programs where your rank ≤ Closing Rank (eligible)
               </p>
             </div>
@@ -593,10 +593,10 @@ export const JosaaSearchPage: React.FC = () => {
           />
 
           {/* Action Buttons */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
-            <div className="text-xs text-slate-500">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#D9E2EC]">
+            <div className="text-xs text-[#5B6B7F]">
               {hasSearched && cutoffsData && (
-                <span>Found <strong className="text-slate-800 font-semibold">{cutoffsData.total.toLocaleString()}</strong> matching cutoff records</span>
+                <span>Found <strong className="text-[#172B4D] font-semibold">{cutoffsData.total.toLocaleString()}</strong> matching cutoff records</span>
               )}
             </div>
 
@@ -605,7 +605,7 @@ export const JosaaSearchPage: React.FC = () => {
                 variant="outline"
                 size="sm"
                 onClick={handleReset}
-                className="text-xs text-slate-600 hover:text-slate-900 h-9"
+                className="text-xs h-9"
               >
                 <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
                 Reset Filters
@@ -615,7 +615,7 @@ export const JosaaSearchPage: React.FC = () => {
                 variant="primary"
                 size="sm"
                 onClick={handleSearch}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs h-9 px-5 shadow-xs"
+                className="text-xs h-9 px-5 shadow-xs"
               >
                 <Search className="w-3.5 h-3.5 mr-1.5" />
                 Find JoSAA Cutoffs
@@ -629,14 +629,14 @@ export const JosaaSearchPage: React.FC = () => {
       {hasSearched ? (
         <div className="space-y-4">
           {/* Results Toolbar */}
-          <div className="bg-white p-3 rounded-xl border border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
+          <div className="bg-white p-3 rounded-xl border border-[#D9E2EC] flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="text-xs font-semibold text-slate-800">
+              <span className="text-xs font-semibold text-[#172B4D]">
                 {cutoffsData?.total?.toLocaleString() ?? 0} Cutoff Records
               </span>
 
               {candidateRankNum !== null && (
-                <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2 py-0.5 rounded-md font-mono font-medium">
+                <span className="text-xs bg-[#EAF7EE] text-[#16845B] border border-[#B7E4C7] px-2 py-0.5 rounded-md font-mono font-medium">
                   Rank ≤ #{candidateRankNum.toLocaleString()}
                 </span>
               )}
@@ -644,12 +644,12 @@ export const JosaaSearchPage: React.FC = () => {
 
             <div className="flex items-center gap-2 flex-wrap">
               {/* Sort by */}
-              <div className="flex items-center h-8 text-xs text-slate-700 border border-slate-200 rounded-lg bg-white px-2.5 shadow-2xs">
-                <ArrowUpDown className="w-3 h-3 mr-1 text-slate-400" />
+              <div className="flex items-center h-8 text-xs text-[#172B4D] border border-[#D9E2EC] rounded-lg bg-white px-2.5 shadow-2xs">
+                <ArrowUpDown className="w-3 h-3 mr-1 text-[#5B6B7F]" />
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="bg-transparent text-xs text-slate-700 focus:outline-none cursor-pointer"
+                  className="bg-transparent text-xs text-[#172B4D] focus:outline-none cursor-pointer"
                 >
                   <option value="rank_asc">Closing Rank: Low to High</option>
                   <option value="rank_desc">Closing Rank: High to Low</option>
@@ -660,12 +660,12 @@ export const JosaaSearchPage: React.FC = () => {
               </div>
 
               {/* View toggle */}
-              <div className="flex items-center h-8 border border-slate-200 rounded-lg bg-slate-100 p-0.5 shadow-2xs">
+              <div className="flex items-center h-8 border border-[#D9E2EC] rounded-lg bg-[#F0F4F8] p-0.5 shadow-2xs">
                 <button
                   type="button"
                   onClick={() => setViewMode('table')}
                   className={`p-1 rounded-md text-xs transition-colors ${
-                    viewMode === 'table' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                    viewMode === 'table' ? 'bg-white text-[#123B66] shadow-2xs' : 'text-[#5B6B7F] hover:text-[#172B4D]'
                   }`}
                   title="Table View"
                 >
@@ -675,7 +675,7 @@ export const JosaaSearchPage: React.FC = () => {
                   type="button"
                   onClick={() => setViewMode('cards')}
                   className={`p-1 rounded-md text-xs transition-colors ${
-                    viewMode === 'cards' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                    viewMode === 'cards' ? 'bg-white text-[#123B66] shadow-2xs' : 'text-[#5B6B7F] hover:text-[#172B4D]'
                   }`}
                   title="Cards View"
                 >
@@ -687,7 +687,7 @@ export const JosaaSearchPage: React.FC = () => {
               <a
                 href={getJosaaExportUrl(queryParams)}
                 download="josaa_cutoffs.csv"
-                className="h-8 inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors shadow-2xs"
+                className="h-8 inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-[#172B4D] bg-white hover:bg-[#F0F4F8] border border-[#D9E2EC] rounded-lg transition-colors shadow-2xs"
               >
                 <Download className="w-3.5 h-3.5" />
                 Export CSV
@@ -697,25 +697,25 @@ export const JosaaSearchPage: React.FC = () => {
 
           {/* Loading Indicator */}
           {isCutoffsLoading ? (
-            <div className="bg-white rounded-xl p-12 border border-slate-200/80 flex flex-col items-center justify-center space-y-3 shadow-xs">
-              <Spinner className="w-7 h-7 text-indigo-600" />
-              <p className="text-xs font-medium text-slate-600">Querying JoSAA database...</p>
+            <div className="bg-white rounded-xl p-12 border border-[#D9E2EC] flex flex-col items-center justify-center space-y-3 shadow-xs">
+              <Spinner className="w-7 h-7 text-[#123B66]" />
+              <p className="text-xs font-medium text-[#5B6B7F]">Querying JoSAA database...</p>
             </div>
           ) : isError ? (
-            <div className="bg-red-50/80 border border-red-200/80 rounded-xl p-5 text-center text-red-900 shadow-xs">
+            <div className="bg-[#FDF2F2] border border-[#F8B4B4] rounded-xl p-5 text-center text-[#C53030] shadow-xs">
               <p className="font-semibold text-sm">Failed to load JoSAA cutoffs</p>
-              <p className="text-xs text-red-600 mt-1">{String((error as any)?.message || 'Internal error')}</p>
+              <p className="text-xs text-[#C53030] mt-1">{String((error as any)?.message || 'Internal error')}</p>
               <Button size="sm" variant="outline" onClick={() => refetch()} className="mt-3 text-xs bg-white">
                 Try Again
               </Button>
             </div>
           ) : cutoffsData?.items.length === 0 ? (
-            <div className="bg-white rounded-xl p-12 border border-slate-200/80 text-center space-y-3 shadow-xs">
-              <div className="w-11 h-11 rounded-xl bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+            <div className="bg-white rounded-xl p-12 border border-[#D9E2EC] text-center space-y-3 shadow-xs">
+              <div className="w-11 h-11 rounded-xl bg-[#F0F4F8] flex items-center justify-center mx-auto text-[#5B6B7F]">
                 <Search className="w-5 h-5" />
               </div>
-              <h3 className="text-sm font-semibold text-slate-800">No JoSAA cutoffs found matching criteria</h3>
-              <p className="text-xs text-slate-500 max-w-md mx-auto">
+              <h3 className="text-sm font-semibold text-[#172B4D]">No JoSAA cutoffs found matching criteria</h3>
+              <p className="text-xs text-[#5B6B7F] max-w-md mx-auto">
                 Try widening your search filters, selecting "All Institute Types", or checking your Category and Rank filter.
               </p>
               <Button size="sm" variant="outline" onClick={handleReset} className="mt-2 text-xs">
@@ -724,51 +724,51 @@ export const JosaaSearchPage: React.FC = () => {
             </div>
           ) : viewMode === 'table' ? (
             /* Table View */
-            <div className="bg-white rounded-xl shadow-xs border border-slate-200/80 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-xs border border-[#D9E2EC] overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-50/80 border-b border-slate-200/80 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                    <tr className="bg-[#F0F4F8] border-b border-[#D9E2EC] text-[#5B6B7F] font-semibold uppercase tracking-wider text-[11px]">
                       <th className="py-3 px-4">Institute</th>
                       <th className="py-3 px-4">Program & Degree</th>
                       <th className="py-3 px-3 text-center">Round</th>
                       <th className="py-3 px-3 text-center">Quota</th>
                       <th className="py-3 px-3">Seat Pool</th>
                       <th className="py-3 px-3 text-center">Category</th>
-                      <th className="py-3 px-4 text-right bg-emerald-50/30 text-emerald-900 border-l border-slate-100">
+                      <th className="py-3 px-4 text-right bg-[#EAF7EE] text-[#16845B] border-l border-[#D9E2EC] font-semibold">
                         Opening Rank (OR)
                       </th>
-                      <th className="py-3 px-4 text-right bg-blue-50/30 text-blue-900 border-l border-slate-100">
+                      <th className="py-3 px-4 text-right bg-[#EAF3FF] text-[#123B66] border-l border-[#D9E2EC] font-semibold">
                         Closing Rank (CR)
                       </th>
                       {candidateRankNum !== null && (
-                        <th className="py-3 px-3 text-center bg-indigo-50/30 text-indigo-900 border-l border-slate-100">
+                        <th className="py-3 px-3 text-center bg-[#F0F4F8] text-[#172B4D] border-l border-[#D9E2EC] font-semibold">
                           Eligibility
                         </th>
                       )}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
+                  <tbody className="divide-y divide-[#D9E2EC] text-[#172B4D] bg-white">
                     {cutoffsData?.items.map((row: JosaaCutoff) => {
                       const isEligible = candidateRankNum !== null ? candidateRankNum <= row.closing_rank : null;
                       const isHighlyCompetitive = candidateRankNum !== null ? candidateRankNum <= row.opening_rank : null;
 
                       return (
-                        <tr key={row.id} className="hover:bg-slate-50/70 transition-colors">
+                        <tr key={row.id} className="hover:bg-[#F7F9FC] transition-colors">
                           {/* Institute */}
                           <td className="py-3 px-4">
-                            <div className="font-semibold text-slate-900 text-xs">
+                            <div className="font-semibold text-[#172B4D] text-xs">
                               {row.institute_name}
                             </div>
                             <div className="flex items-center gap-1.5 mt-1">
                               {getInstituteTypeBadge(row.institute_type)}
                               {row.institute_state && (
-                                <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/60">
+                                <span className="text-[10px] text-[#5B6B7F] bg-[#F0F4F8] px-1.5 py-0.5 rounded border border-[#D9E2EC]">
                                   {row.institute_state}
                                 </span>
                               )}
                               {row.institute_code && (
-                                <span className="text-[10px] text-slate-400 font-mono">
+                                <span className="text-[10px] text-[#5B6B7F] font-mono">
                                   ({row.institute_code})
                                 </span>
                               )}
@@ -777,11 +777,11 @@ export const JosaaSearchPage: React.FC = () => {
 
                           {/* Program */}
                           <td className="py-3 px-4 max-w-xs">
-                            <div className="font-medium text-slate-800 text-xs leading-snug">
+                            <div className="font-medium text-[#172B4D] text-xs leading-snug">
                               {row.program_name}
                             </div>
                             <div className="mt-1">
-                              <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200/60 font-medium">
+                              <span className="text-[10px] bg-[#F0F4F8] text-[#5B6B7F] px-1.5 py-0.5 rounded border border-[#D9E2EC] font-medium">
                                 {row.degree_type || 'B.Tech / B.E.'}
                               </span>
                             </div>
@@ -789,14 +789,14 @@ export const JosaaSearchPage: React.FC = () => {
 
                           {/* Round */}
                           <td className="py-3 px-3 text-center whitespace-nowrap">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200/60 font-mono">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-[#F0F4F8] text-[#172B4D] border border-[#D9E2EC] font-mono">
                               Round {row.round_no}
                             </span>
                           </td>
 
                           {/* Quota */}
                           <td className="py-3 px-3 text-center whitespace-nowrap">
-                            <span className="font-semibold text-xs text-slate-800 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded font-mono">
+                            <span className="font-semibold text-xs text-[#172B4D] bg-[#F0F4F8] border border-[#D9E2EC] px-1.5 py-0.5 rounded font-mono">
                               {row.quota}
                             </span>
                           </td>
@@ -804,11 +804,11 @@ export const JosaaSearchPage: React.FC = () => {
                           {/* Gender */}
                           <td className="py-3 px-3 whitespace-nowrap">
                             {row.gender.includes('Female') ? (
-                              <span className="text-[10px] text-pink-700 bg-pink-50 border border-pink-200/70 px-2 py-0.5 rounded-md font-medium">
+                              <span className="text-[10px] text-[#B7791F] bg-[#FEF7E6] border border-[#F7D070] px-2 py-0.5 rounded-md font-medium">
                                 Female-only
                               </span>
                             ) : (
-                              <span className="text-[10px] text-slate-600 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-md font-medium">
+                              <span className="text-[10px] text-[#5B6B7F] bg-[#F0F4F8] border border-[#D9E2EC] px-2 py-0.5 rounded-md font-medium">
                                 Gender-Neutral
                               </span>
                             )}
@@ -816,38 +816,38 @@ export const JosaaSearchPage: React.FC = () => {
 
                           {/* Category */}
                           <td className="py-3 px-3 text-center whitespace-nowrap">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded font-semibold text-xs bg-indigo-50 text-indigo-700 border border-indigo-200/60 font-mono">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded font-semibold text-xs bg-[#EAF3FF] text-[#123B66] border border-[#ADCFFF] font-mono">
                               {row.category_code}
                             </span>
                           </td>
 
                           {/* Opening Rank */}
-                          <td className="py-3 px-4 text-right whitespace-nowrap bg-emerald-50/10 border-l border-slate-100">
-                            <span className="text-xs font-mono font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded">
+                          <td className="py-3 px-4 text-right whitespace-nowrap bg-[#EAF7EE]/30 border-l border-[#D9E2EC]">
+                            <span className="text-xs font-mono font-semibold text-[#16845B] bg-[#EAF7EE] border border-[#B7E4C7] px-2 py-0.5 rounded">
                               #{row.opening_rank.toLocaleString()}
                             </span>
                           </td>
 
                           {/* Closing Rank */}
-                          <td className="py-3 px-4 text-right whitespace-nowrap bg-blue-50/10 border-l border-slate-100">
-                            <span className="text-xs font-mono font-bold text-blue-800 bg-blue-50 border border-blue-200/80 px-2 py-0.5 rounded">
+                          <td className="py-3 px-4 text-right whitespace-nowrap bg-[#EAF3FF]/30 border-l border-[#D9E2EC]">
+                            <span className="text-xs font-mono font-bold text-[#123B66] bg-[#EAF3FF] border border-[#ADCFFF] px-2 py-0.5 rounded">
                               #{row.closing_rank.toLocaleString()}
                             </span>
                           </td>
 
                           {/* Eligibility */}
                           {candidateRankNum !== null && (
-                            <td className="py-3 px-3 text-center whitespace-nowrap bg-indigo-50/10 border-l border-slate-100">
+                            <td className="py-3 px-3 text-center whitespace-nowrap bg-[#F0F4F8]/50 border-l border-[#D9E2EC]">
                               {isHighlyCompetitive ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#16845B] bg-[#EAF7EE] border border-[#B7E4C7] px-2 py-0.5 rounded-md">
                                   <CheckCircle2 className="w-3 h-3" /> Safe
                                 </span>
                               ) : isEligible ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#1769D2] bg-[#EAF3FF] border border-[#ADCFFF] px-2 py-0.5 rounded-md">
                                   In Reach
                                 </span>
                               ) : (
-                                <span className="text-[10px] font-medium text-slate-400">
+                                <span className="text-[10px] font-medium text-[#5B6B7F]">
                                   Closed
                                 </span>
                               )}
@@ -869,74 +869,74 @@ export const JosaaSearchPage: React.FC = () => {
                 return (
                   <div 
                     key={row.id} 
-                    className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between"
+                    className="bg-white rounded-xl border border-[#D9E2EC] p-4 shadow-xs hover:border-[#1769D2]/40 transition-all flex flex-col justify-between"
                   >
                     <div>
                       {/* Card Header */}
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           {getInstituteTypeBadge(row.institute_type)}
-                          <span className="text-[10px] font-semibold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200/60 font-mono">
+                          <span className="text-[10px] font-semibold bg-[#F0F4F8] text-[#172B4D] px-1.5 py-0.5 rounded border border-[#D9E2EC] font-mono">
                             Round {row.round_no}
                           </span>
-                          <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/60 px-1.5 py-0.5 rounded font-mono">
+                          <span className="text-[10px] font-bold bg-[#EAF3FF] text-[#123B66] border border-[#ADCFFF] px-1.5 py-0.5 rounded font-mono">
                             {row.category_code}
                           </span>
                         </div>
-                        <span className="text-[10px] text-slate-400 font-mono">
+                        <span className="text-[10px] text-[#5B6B7F] font-mono">
                           {row.academic_year}
                         </span>
                       </div>
 
                       {/* Institute Name */}
-                      <h4 className="font-bold text-slate-900 text-xs leading-snug line-clamp-2">
+                      <h4 className="font-bold text-[#172B4D] text-xs leading-snug line-clamp-2">
                         {row.institute_name}
                       </h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
+                      <p className="text-[11px] text-[#5B6B7F] mt-0.5">
                         {row.institute_state || 'India'}
                       </p>
 
                       {/* Program */}
-                      <div className="mt-2.5 p-2 bg-slate-50 rounded-lg border border-slate-100">
-                        <div className="text-xs font-semibold text-slate-800 line-clamp-2">
+                      <div className="mt-2.5 p-2 bg-[#F7F9FC] rounded-lg border border-[#D9E2EC]">
+                        <div className="text-xs font-semibold text-[#172B4D] line-clamp-2">
                           {row.program_name}
                         </div>
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
+                        <div className="flex items-center justify-between text-[11px] text-[#5B6B7F] mt-1">
                           <span>{row.degree_type || 'B.Tech'}</span>
-                          <span>Quota: <strong className="text-slate-700 font-mono">{row.quota}</strong></span>
+                          <span>Quota: <strong className="text-[#172B4D] font-mono font-semibold">{row.quota}</strong></span>
                         </div>
                       </div>
                     </div>
 
                     {/* Ranks Display Box */}
-                    <div className="mt-3 pt-3 border-t border-slate-100">
+                    <div className="mt-3 pt-3 border-t border-[#D9E2EC]">
                       <div className="grid grid-cols-2 gap-2 text-center">
-                        <div className="bg-emerald-50/60 border border-emerald-200/70 rounded-lg p-2">
-                          <div className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider">
+                        <div className="bg-[#EAF7EE] border border-[#B7E4C7] rounded-lg p-2">
+                          <div className="text-[10px] uppercase font-bold text-[#16845B] tracking-wider">
                             Opening Rank
                           </div>
-                          <div className="text-xs font-bold font-mono text-emerald-800 mt-0.5">
+                          <div className="text-xs font-bold font-mono text-[#16845B] mt-0.5">
                             #{row.opening_rank.toLocaleString()}
                           </div>
                         </div>
 
-                        <div className="bg-blue-50/60 border border-blue-200/70 rounded-lg p-2">
-                          <div className="text-[10px] uppercase font-bold text-blue-800 tracking-wider">
+                        <div className="bg-[#EAF3FF] border border-[#ADCFFF] rounded-lg p-2">
+                          <div className="text-[10px] uppercase font-bold text-[#123B66] tracking-wider">
                             Closing Rank
                           </div>
-                          <div className="text-xs font-bold font-mono text-blue-800 mt-0.5">
+                          <div className="text-xs font-bold font-mono text-[#123B66] mt-0.5">
                             #{row.closing_rank.toLocaleString()}
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between mt-2.5 text-[11px] text-slate-500 px-1">
-                        <span>Pool: <strong className="text-slate-700">{row.gender.includes('Female') ? 'Female-only' : 'Gender-Neutral'}</strong></span>
+                      <div className="flex items-center justify-between mt-2.5 text-[11px] text-[#5B6B7F] px-1">
+                        <span>Pool: <strong className="text-[#172B4D]">{row.gender.includes('Female') ? 'Female-only' : 'Gender-Neutral'}</strong></span>
                         {candidateRankNum !== null && (
                           isEligible ? (
-                            <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded text-[10px]">Eligible</span>
+                            <span className="font-bold text-[#16845B] bg-[#EAF7EE] border border-[#B7E4C7] px-1.5 py-0.5 rounded text-[10px]">Eligible</span>
                           ) : (
-                            <span className="font-medium text-slate-400 text-[10px]">Closed</span>
+                            <span className="font-medium text-[#5B6B7F] text-[10px]">Closed</span>
                           )
                         )}
                       </div>
@@ -949,8 +949,8 @@ export const JosaaSearchPage: React.FC = () => {
 
           {/* Pagination Controls */}
           {cutoffsData && cutoffsData.total_pages > 1 && (
-            <div className="bg-white p-3 rounded-xl border border-slate-200/80 flex items-center justify-between shadow-xs">
-              <div className="text-xs text-slate-500">
+            <div className="bg-white p-3 rounded-xl border border-[#D9E2EC] flex items-center justify-between shadow-xs">
+              <div className="text-xs text-[#5B6B7F]">
                 Page {cutoffsData.page} of {cutoffsData.total_pages} ({cutoffsData.total.toLocaleString()} total cutoffs)
               </div>
               <div className="flex items-center gap-2">
@@ -963,7 +963,7 @@ export const JosaaSearchPage: React.FC = () => {
                 >
                   Previous
                 </Button>
-                <span className="text-xs font-semibold px-2 text-slate-700 font-mono">
+                <span className="text-xs font-semibold px-2 text-[#172B4D] font-mono">
                   {page} / {cutoffsData.total_pages}
                 </span>
                 <Button
@@ -981,15 +981,15 @@ export const JosaaSearchPage: React.FC = () => {
         </div>
       ) : (
         /* Initial Ready State */
-        <div className="bg-white rounded-xl p-12 border border-dashed border-slate-200 text-center space-y-3 shadow-xs">
-          <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center mx-auto text-indigo-600">
+        <div className="bg-white rounded-xl p-12 border border-dashed border-[#D9E2EC] text-center space-y-3 shadow-xs">
+          <div className="w-11 h-11 rounded-xl bg-[#EAF3FF] border border-[#ADCFFF] flex items-center justify-center mx-auto text-[#123B66]">
             <Award className="w-5 h-5" />
           </div>
           <div className="space-y-1">
-            <h3 className="text-sm font-semibold text-slate-900">
+            <h3 className="text-sm font-semibold text-[#172B4D]">
               Ready to Explore JoSAA Cutoffs
             </h3>
-            <p className="text-xs text-slate-500 max-w-md mx-auto">
+            <p className="text-xs text-[#5B6B7F] max-w-md mx-auto">
               Select your filters above (such as CAP Round, Institute Type, Institute Name, Academic Program, or Category) and click <strong>"Find JoSAA Cutoffs"</strong> to view official opening and closing ranks.
             </p>
           </div>
@@ -998,7 +998,7 @@ export const JosaaSearchPage: React.FC = () => {
               variant="primary"
               size="sm"
               onClick={handleSearch}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs"
+              className="text-xs"
             >
               <Search className="w-3.5 h-3.5 mr-1.5" />
               Search All JoSAA Cutoffs

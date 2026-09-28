@@ -23,7 +23,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
         {label && (
           <label
             htmlFor={selectId}
-            className="block text-xs font-semibold text-slate-700 tracking-tight mb-1.5"
+            className="block text-xs font-semibold text-[#172B4D] tracking-tight mb-1.5"
           >
             {label}
           </label>
@@ -33,8 +33,8 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             id={selectId}
             ref={ref}
             className={cn(
-              'block w-full h-9 appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-8 py-1.5 text-xs text-slate-900 shadow-sm transition-all focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/15 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400',
-              error && 'border-rose-400 text-rose-900 focus:border-rose-500 focus:ring-rose-500/20',
+              'block w-full h-9 appearance-none rounded-lg border border-[#D9E2EC] bg-white px-3 pr-8 py-1.5 text-xs text-[#172B4D] shadow-subtle transition-all focus:border-[#1769D2] focus:outline-none focus:ring-2 focus:ring-[#1769D2]/20 disabled:cursor-not-allowed disabled:bg-[#F0F4F8] disabled:text-[#8292A2]',
+              error && 'border-[#C53030] text-[#C53030] focus:border-[#C53030] focus:ring-[#C53030]/20',
               className
             )}
             {...props}
@@ -45,15 +45,15 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
               </option>
             ))}
           </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400">
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-[#5B6B7F]">
             <ChevronDown className="w-3.5 h-3.5" />
           </div>
         </div>
         {helperText && !error && (
-          <p className="mt-1 text-[11px] text-slate-500">{helperText}</p>
+          <p className="mt-1 text-[11px] text-[#5B6B7F]">{helperText}</p>
         )}
         {error && (
-          <p className="mt-1 text-xs text-rose-600 font-medium">{error}</p>
+          <p className="mt-1 text-xs text-[#C53030] font-medium">{error}</p>
         )}
       </div>
     );

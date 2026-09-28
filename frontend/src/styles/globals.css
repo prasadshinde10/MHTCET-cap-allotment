@@ -4,21 +4,23 @@
 
 @layer base {
   html {
-    @apply antialiased text-slate-800 text-[14px];
+    @apply antialiased text-[#172B4D] text-[14px];
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
   body {
-    @apply bg-slate-50/60 text-slate-800 min-h-screen font-sans;
+    background-color: #F7F9FC;
+    color: #172B4D;
+    @apply min-h-screen font-sans;
   }
 
-  /* Improved focus ring for keyboard accessibility */
+  /* Institutional focus ring for accessible navigation */
   :focus-visible {
-    @apply outline-none ring-2 ring-blue-600/30 ring-offset-1;
+    @apply outline-none ring-2 ring-[#1769D2]/25 ring-offset-1;
   }
 }
 
-/* Minimalist modern scrollbars */
+/* Institutional minimal scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -29,9 +31,10 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-300 rounded-full;
+  background-color: #CBD5E1;
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-slate-400;
+  background-color: #94A3B8;
 }

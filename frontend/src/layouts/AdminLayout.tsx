@@ -10,8 +10,8 @@ export const AdminLayout: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Spinner className="w-6 h-6 text-blue-600" />
+      <div className="min-h-screen flex items-center justify-center bg-[#F7F9FC]">
+        <Spinner className="w-6 h-6 text-[#1769D2]" />
       </div>
     );
   }
@@ -21,7 +21,7 @@ export const AdminLayout: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50/60 font-sans text-slate-800">
+    <div className="flex h-screen overflow-hidden bg-[#F7F9FC] font-sans text-[#172B4D]">
       <Sidebar />
       <div className="flex flex-col flex-1 overflow-hidden min-w-0">
         <Topbar />

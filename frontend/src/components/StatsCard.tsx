@@ -20,8 +20,8 @@ export const StatsCard: React.FC<StatsCardProps> = ({
   label,
   value,
   icon: Icon = Activity,
-  iconColor = 'text-blue-600',
-  iconBg = 'bg-blue-50 border-blue-200/60',
+  iconColor = 'text-[#123B66]',
+  iconBg = 'bg-[#EAF3FF] border-[#ADCFFF]',
   trend,
   subtitle,
   className
@@ -29,13 +29,13 @@ export const StatsCard: React.FC<StatsCardProps> = ({
   const displayLabel = title || label || '';
 
   return (
-    <div className={cn("bg-white rounded-xl border border-slate-200/90 p-4 shadow-sm flex items-center justify-between gap-3", className)}>
+    <div className={cn("bg-white rounded-xl border border-[#D9E2EC] p-4 shadow-subtle flex items-center justify-between gap-3", className)}>
       <div className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 truncate">{displayLabel}</p>
-        <p className="mt-1 text-xl font-bold text-slate-900 tracking-tight">{value}</p>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-[#5B6B7F] truncate">{displayLabel}</p>
+        <p className="mt-1 text-xl font-bold text-[#172B4D] tracking-tight">{value}</p>
         {(trend || subtitle) && (
-          <p className="mt-0.5 text-[11px] text-slate-500 truncate">
-            {trend && <span className="text-emerald-600 font-semibold mr-1.5">{trend}</span>}
+          <p className="mt-0.5 text-[11px] text-[#5B6B7F] truncate">
+            {trend && <span className="text-[#16845B] font-semibold mr-1.5">{trend}</span>}
             {subtitle}
           </p>
         )}

@@ -74,9 +74,9 @@ export function FileDropzone({ onFileSelect, accept = '.pdf', maxSizeMB = 50, cl
       <div
         className={cn(
           'relative flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-xl cursor-pointer transition-all duration-150',
-          isDragActive ? 'border-blue-500 bg-blue-50/40 ring-4 ring-blue-500/10' : 'border-slate-300 hover:border-slate-400 bg-slate-50/50 hover:bg-slate-50',
-          selectedFile ? 'border-emerald-500 bg-emerald-50/30 hover:border-emerald-600' : '',
-          error ? 'border-rose-400 bg-rose-50/30' : ''
+          isDragActive ? 'border-[#1769D2] bg-[#EAF3FF]/40 ring-4 ring-[#1769D2]/10' : 'border-[#D9E2EC] hover:border-[#1769D2]/70 bg-[#F7F9FC] hover:bg-[#F0F4F8]',
+          selectedFile ? 'border-[#16845B] bg-[#EAF7EE]/30 hover:border-[#16845B]' : '',
+          error ? 'border-[#C53030] bg-[#FDF2F2]/30' : ''
         )}
         onDragEnter={handleDragEnter}
         onDragOver={handleDragEnter}
@@ -93,21 +93,21 @@ export function FileDropzone({ onFileSelect, accept = '.pdf', maxSizeMB = 50, cl
         />
         
         {selectedFile ? (
-          <div className="flex items-center w-full max-w-md bg-white p-3.5 rounded-lg shadow-sm border border-slate-200">
-            <div className="w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-600 mr-3 flex-shrink-0">
+          <div className="flex items-center w-full max-w-md bg-white p-3.5 rounded-lg shadow-subtle border border-[#D9E2EC]">
+            <div className="w-10 h-10 rounded-lg bg-[#EAF7EE] border border-[#B7E4C7] flex items-center justify-center text-[#16845B] mr-3 flex-shrink-0">
               <CheckCircle2 className="h-5 w-5" />
             </div>
             <div className="flex-1 min-w-0 mr-2">
-              <p className="text-xs font-semibold text-slate-900 truncate">
+              <p className="text-xs font-semibold text-[#172B4D] truncate">
                 {selectedFile.name}
               </p>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready to parse
+              <p className="text-[11px] text-[#5B6B7F] mt-0.5">
+                {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for ingestion
               </p>
             </div>
             <button
               onClick={removeFile}
-              className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              className="p-1 rounded-md text-[#5B6B7F] hover:text-[#C53030] hover:bg-[#FDF2F2] transition-colors"
               title="Remove file"
             >
               <X className="h-4 w-4" />
@@ -115,19 +115,19 @@ export function FileDropzone({ onFileSelect, accept = '.pdf', maxSizeMB = 50, cl
           </div>
         ) : (
           <div className="flex flex-col items-center text-center">
-            <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 mb-3 transition-transform group-hover:scale-105">
-              <UploadCloud className={cn('h-6 w-6 text-slate-500', isDragActive && 'text-blue-600')} />
+            <div className="w-12 h-12 rounded-xl bg-[#EAF3FF] border border-[#ADCFFF] flex items-center justify-center text-[#123B66] mb-3 transition-transform group-hover:scale-105">
+              <UploadCloud className={cn('h-6 w-6 text-[#1769D2]', isDragActive && 'text-[#0B2545]')} />
             </div>
-            <p className="text-xs font-semibold text-slate-800 tracking-tight">
-              Click to select or drag and drop official cutoff PDF
+            <p className="text-xs font-semibold text-[#172B4D] tracking-tight">
+              Click to select or drag and drop official cutoff PDF document
             </p>
-            <p className="text-[11px] text-slate-400 mt-1">
-              Supports State & All-India MHT-CET CAP PDFs up to {maxSizeMB}MB
+            <p className="text-[11px] text-[#5B6B7F] mt-1">
+              Supports State & All-India CAP cutoff allotment PDFs up to {maxSizeMB}MB
             </p>
           </div>
         )}
       </div>
-      {error && <p className="mt-1.5 text-xs text-rose-600 font-medium">{error}</p>}
+      {error && <p className="mt-1.5 text-xs text-[#C53030] font-medium">{error}</p>}
     </div>
   );
 }

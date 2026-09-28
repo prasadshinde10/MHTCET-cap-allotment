@@ -24,7 +24,7 @@ export const LoginPage: React.FC = () => {
     try {
       await login({ username, password });
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Invalid username or password');
+      setError(err.response?.data?.detail || 'Invalid administrator username or password');
     } finally {
       setIsLoading(false);
     }
@@ -33,13 +33,13 @@ export const LoginPage: React.FC = () => {
   return (
     <div>
       <div className="mb-5 text-center">
-        <h3 className="text-base font-bold text-slate-900 tracking-tight">Admin Sign In</h3>
-        <p className="text-xs text-slate-500 mt-0.5">Enter your credentials to manage admissions</p>
+        <h3 className="text-base font-bold text-[#172B4D] tracking-tight">Admin Authentication</h3>
+        <p className="text-xs text-[#5B6B7F] mt-0.5">Authorized access to admissions and allotment data</p>
       </div>
 
       {error && (
-        <div className="bg-rose-50 border border-rose-200/80 rounded-lg p-3 mb-4 flex items-center gap-2 text-rose-700 text-xs">
-          <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-500" />
+        <div className="bg-[#FDF2F2] border border-[#F8B4B4] rounded-lg p-3 mb-4 flex items-center gap-2 text-[#C53030] text-xs">
+          <AlertCircle className="w-4 h-4 flex-shrink-0 text-[#C53030]" />
           <span>{error}</span>
         </div>
       )}
@@ -67,12 +67,12 @@ export const LoginPage: React.FC = () => {
           <Button
             type="submit"
             size="md"
-            className="w-full"
+            className="w-full bg-[#123B66] hover:bg-[#0B2545] text-white"
             isLoading={isLoading}
             disabled={isLoading || !username || !password}
           >
             <ShieldCheck className="w-4 h-4 mr-1.5" />
-            Sign in to Portal
+            Sign in to Console
           </Button>
         </div>
       </form>

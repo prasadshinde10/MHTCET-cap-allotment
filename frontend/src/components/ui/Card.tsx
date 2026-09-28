@@ -11,12 +11,12 @@ interface CardProps {
 
 export const Card: React.FC<CardProps> = ({ children, className, title, subtitle, padding = true }) => {
   return (
-    <div className={cn("bg-white overflow-hidden rounded-xl border border-slate-200/90 shadow-sm", className)}>
+    <div className={cn("bg-white overflow-hidden rounded-xl border border-[#D9E2EC] shadow-subtle", className)}>
       {title && (
-        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+        <div className="px-5 py-3.5 border-b border-[#D9E2EC] flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-slate-900 tracking-tight">{title}</h3>
-            {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+            <h3 className="text-sm font-semibold text-[#172B4D] tracking-tight">{title}</h3>
+            {subtitle && <p className="text-xs text-[#5B6B7F] mt-0.5">{subtitle}</p>}
           </div>
         </div>
       )}
@@ -28,11 +28,11 @@ export const Card: React.FC<CardProps> = ({ children, className, title, subtitle
 };
 
 export const CardHeader: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
-  <div className={cn("px-5 py-3.5 border-b border-slate-100", className)}>{children}</div>
+  <div className={cn("px-5 py-3.5 border-b border-[#D9E2EC]", className)}>{children}</div>
 );
 
 export const CardTitle: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
-  <h3 className={cn("text-sm font-semibold text-slate-900 tracking-tight", className)}>{children}</h3>
+  <h3 className={cn("text-sm font-semibold text-[#172B4D] tracking-tight", className)}>{children}</h3>
 );
 
 export const CardContent: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
