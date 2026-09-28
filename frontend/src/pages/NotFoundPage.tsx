@@ -1,21 +1,26 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
-import { AlertCircle } from 'lucide-react';
+import { Search, ArrowLeft } from 'lucide-react';
 
 export const NotFoundPage: React.FC = () => {
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <AlertCircle className="mx-auto h-16 w-16 text-primary-500 mb-4" />
-        <h2 className="text-3xl font-extrabold text-gray-900 mb-2">404 - Not Found</h2>
-        <p className="text-gray-500 mb-8">The page you are looking for does not exist.</p>
-        <Link to="/dashboard">
-          <Button variant="primary" size="lg">
-            Return to Dashboard
+        <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 mx-auto mb-4">
+          <Search className="h-6 w-6" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-900 tracking-tight mb-1">Page Not Found</h2>
+        <p className="text-xs text-slate-500 mb-6">The requested admissions page or route does not exist.</p>
+        <Link to="/search">
+          <Button variant="primary" size="md">
+            <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
+            Return to Cutoff Search
           </Button>
         </Link>
       </div>
     </div>
   );
 };
+
+export default NotFoundPage;

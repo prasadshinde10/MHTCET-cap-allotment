@@ -743,7 +743,7 @@ export const CutoffSearchPage: React.FC = () => {
   const renderRoundCell = (roundData: { percentile?: number; meritNumber?: number } | null) => {
     if (!roundData || (roundData.percentile === undefined && roundData.meritNumber === undefined)) {
       return (
-        <span className="inline-block px-2 py-0.5 text-xs font-mono font-medium text-gray-400 bg-gray-50 border border-gray-100 rounded">
+        <span className="inline-block px-2 py-0.5 text-xs font-mono font-medium text-slate-400 bg-slate-50 border border-slate-100 rounded">
           N/A
         </span>
       );
@@ -755,18 +755,21 @@ export const CutoffSearchPage: React.FC = () => {
 
     return (
       <div className="flex flex-col items-end">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           {isEligible && (
-            <span className="inline-flex items-center text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1 rounded" title={`Eligible: Student score is ${margin}% above cutoff`}>
+            <span
+              className="inline-flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/70 px-1.5 py-0.5 rounded"
+              title={`Eligible: Student score is ${margin}% above cutoff`}
+            >
               ✓
             </span>
           )}
-          <span className={`font-mono font-semibold text-sm ${isEligible ? 'text-emerald-700 font-bold' : 'text-gray-900'}`}>
+          <span className={`font-mono text-sm ${isEligible ? 'text-emerald-700 font-bold' : 'text-slate-900 font-semibold'}`}>
             {roundData.percentile !== undefined ? `${roundData.percentile.toFixed(4)}%` : 'N/A'}
           </span>
         </div>
         {roundData.meritNumber !== undefined && (
-          <span className="text-[11px] font-mono text-gray-500">
+          <span className="text-[11px] font-mono text-slate-500 mt-0.5">
             Merit #{roundData.meritNumber.toLocaleString()}
           </span>
         )}
@@ -775,126 +778,120 @@ export const CutoffSearchPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 pb-12">
-      {/* Header */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-gray-900 tracking-tight">Cutoff Search & Counselling</h1>
-              <Badge variant="info" className="uppercase text-[10px] tracking-wider font-semibold">
-                Dual Panel Portal
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-500 mt-1">
-              Select student preferences below to evaluate cutoff percentiles and merit ranks across CAP Rounds 1–4.
-            </p>
+    <div className="space-y-6">
+      {/* Top Header & Reset */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Cutoff Search & Counselling</h1>
+            <Badge variant="info" className="text-[10px] uppercase tracking-wider font-semibold">
+              Admissions Portal
+            </Badge>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleResetFilters}
-              className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Reset Filters
-            </Button>
-          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Evaluate cutoff percentiles and merit ranks across CAP Rounds 1–4 by branch, college, district, and category.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleResetFilters}
+            className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Reset All Filters
+          </Button>
         </div>
       </div>
 
-      {/* Dual Panel Switcher Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 shadow-md">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2 bg-slate-950/90 p-1.5 rounded-lg border border-slate-800 w-full md:w-auto">
-            <button
-              type="button"
-              onClick={() => {
-                setActivePanel('STATE');
-                setSearchParams((prev) => {
-                  const p = new URLSearchParams(prev);
-                  p.set('panel', 'state');
-                  return p;
-                });
-              }}
-              className={`flex-1 md:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-md text-xs font-bold transition-all ${
-                activePanel === 'STATE'
-                  ? 'bg-primary-600 text-white shadow-sm ring-1 ring-primary-500'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
-              }`}
-            >
-              <Building2 className="w-4 h-4 text-primary-300" />
-              <span>MHT-CET (Maharashtra State)</span>
-              <span className="ml-1 text-[10px] bg-slate-800 text-primary-300 px-2 py-0.5 rounded-full border border-slate-700">
-                104,649 Records
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setActivePanel('ALL_INDIA');
-                setSearchParams((prev) => {
-                  const p = new URLSearchParams(prev);
-                  p.set('panel', 'all_india');
-                  return p;
-                });
-              }}
-              className={`flex-1 md:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-md text-xs font-bold transition-all ${
-                activePanel === 'ALL_INDIA'
-                  ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
-              }`}
-            >
-              <Sparkles className="w-4 h-4 text-indigo-300" />
-              <span>MHT-CET (All India Cutoff)</span>
-            </button>
-
-            <Link
-              to="/josaa"
-              className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-md text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all border border-transparent hover:border-slate-700"
-            >
-              <Award className="w-4 h-4 text-amber-400" />
-              <span>JoSAA (IIT / NIT / IIIT)</span>
-              <span className="ml-1 text-[10px] bg-slate-800 text-amber-300 px-2 py-0.5 rounded-full border border-slate-700">
-                Standalone DB
-              </span>
-            </Link>
-          </div>
-
-          <div className="text-right px-2 hidden lg:block">
-            <span className="text-xs font-bold text-slate-200">
-              {activePanel === 'STATE' ? '🏛️ Maharashtra State Candidate Quotas' : '🌐 All India / JEE Main Candidate Quotas'}
+      {/* Segmented Module Switcher Navigation */}
+      <div className="bg-slate-100/90 border border-slate-200/80 rounded-xl p-1.5 flex flex-col md:flex-row items-center justify-between gap-2 shadow-xs">
+        <div className="flex items-center gap-1 w-full md:w-auto">
+          <button
+            type="button"
+            onClick={() => {
+              setActivePanel('STATE');
+              setSearchParams((prev) => {
+                const p = new URLSearchParams(prev);
+                p.set('panel', 'state');
+                return p;
+              });
+            }}
+            className={`flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+              activePanel === 'STATE'
+                ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50 border border-transparent'
+            }`}
+          >
+            <Building2 className={`w-3.5 h-3.5 ${activePanel === 'STATE' ? 'text-blue-600' : 'text-slate-400'}`} />
+            <span>MHT-CET (Maharashtra State)</span>
+            <span className="ml-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">
+              104,649 Records
             </span>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              {activePanel === 'STATE'
-                ? 'Evaluating GOPEN, LOPEN, OBC, SC, ST, EWS, TFWS State Merit'
-                : 'Evaluating JEE Main Percentile & All India Merit Ranks across Institutes'}
-            </p>
-          </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActivePanel('ALL_INDIA');
+              setSearchParams((prev) => {
+                const p = new URLSearchParams(prev);
+                p.set('panel', 'all_india');
+                return p;
+              });
+            }}
+            className={`flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+              activePanel === 'ALL_INDIA'
+                ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50 border border-transparent'
+            }`}
+          >
+            <Sparkles className={`w-3.5 h-3.5 ${activePanel === 'ALL_INDIA' ? 'text-indigo-600' : 'text-slate-400'}`} />
+            <span>MHT-CET (All India Cutoff)</span>
+          </button>
+
+          <Link
+            to="/josaa"
+            className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-white/50 transition-all border border-transparent"
+          >
+            <Award className="w-3.5 h-3.5 text-amber-500" />
+            <span>JoSAA (IIT / NIT / IIIT)</span>
+            <span className="ml-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
+              Standalone DB
+            </span>
+          </Link>
+        </div>
+
+        <div className="hidden lg:flex items-center gap-2 px-3 py-1 bg-white/70 border border-slate-200/60 rounded-lg text-xs">
+          <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+          <span className="text-slate-600 font-medium">
+            {activePanel === 'STATE'
+              ? 'Maharashtra State Quotas (GOPEN, LOPEN, OBC, SC, ST, EWS, TFWS)'
+              : 'All India Quota (JEE Main Percentile & All India Merit Ranks)'}
+          </span>
         </div>
       </div>
 
       {/* STEP 1: Student Preference Form */}
-      <form onSubmit={handleFindColleges} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-bold">
+      <form onSubmit={handleFindColleges} className="bg-white border border-slate-200/90 rounded-xl shadow-xs overflow-hidden">
+        <div className="px-5 py-3.5 bg-slate-50/60 border-b border-slate-200/80 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold">
               1
             </span>
-            <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider">
+            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
               Student Preference Form
             </h2>
           </div>
-          <span className="text-xs text-gray-500">Fill answers given by candidate</span>
+          <span className="text-xs text-slate-400">Fill answers given by candidate</span>
         </div>
 
         <div className="p-5 space-y-6">
           {/* Section A: Academic Preference */}
           <div>
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <BookOpen className="w-3.5 h-3.5 text-primary-600" />
+            <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <BookOpen className="w-3.5 h-3.5 text-blue-600" />
               Academic & Course Preference
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -910,14 +907,14 @@ export const CutoffSearchPage: React.FC = () => {
                   helperText={
                     selectedCourses.length > 0
                       ? `${selectedCourses.length} branch(es) selected`
-                      : 'Leave as "All Branches" for all disciplines'
+                      : 'Leave blank to include all branches'
                   }
                 />
               </div>
 
               {/* Student's MHT-CET Percentile Score */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-slate-700 mb-1.5">
                   Student's MHT-CET Percentile
                 </label>
                 <div className="relative">
@@ -934,22 +931,22 @@ export const CutoffSearchPage: React.FC = () => {
                         setStudentPercentile(val);
                       }
                     }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 placeholder-gray-400"
+                    className="w-full h-9 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600/15 focus:border-blue-600 transition-all shadow-xs"
                   />
                   {studentPercentile && (
                     <button
                       type="button"
                       onClick={() => setStudentPercentile('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
                       title="Clear score"
                     >
                       ✕
                     </button>
                   )}
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-[11px] text-slate-500">
                   {studentPercentile
-                    ? `Shows colleges with cutoff ≤ ${Number(studentPercentile).toFixed(4)}%`
+                    ? `Filters to cutoffs ≤ ${Number(studentPercentile).toFixed(4)}%`
                     : 'Enter score to see recommended colleges'}
                 </p>
               </div>
@@ -966,12 +963,12 @@ export const CutoffSearchPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="border-t border-gray-100" />
+          <div className="border-t border-slate-100" />
 
           {/* Section B: Student Reservation & Caste */}
           <div>
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-primary-600" />
+            <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
               Category & Reservation Quota
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -1007,12 +1004,12 @@ export const CutoffSearchPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="border-t border-gray-100" />
+          <div className="border-t border-slate-100" />
 
           {/* Section C: College & Location Preferences */}
           <div>
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <Building2 className="w-3.5 h-3.5 text-primary-600" />
+            <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-blue-600" />
               College Name, Type & Location Preferences
             </h3>
 
@@ -1092,21 +1089,21 @@ export const CutoffSearchPage: React.FC = () => {
         </div>
 
         {/* Form Footer Action */}
-        <div className="px-5 py-4 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="text-xs text-gray-500">
+        <div className="px-5 py-3.5 bg-slate-50/60 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="text-xs text-slate-500">
             {activeChips.length > 0
-              ? `${activeChips.length} filter${activeChips.length > 1 ? 's' : ''} configured`
-              : 'Showing all colleges & courses by default'}
+              ? `${activeChips.length} filter${activeChips.length > 1 ? 's' : ''} active`
+              : 'All colleges and engineering disciplines included by default'}
           </div>
 
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <Button
               type="submit"
-              size="lg"
-              className="w-full sm:w-auto px-8 bg-primary-600 hover:bg-primary-700 text-white font-semibold flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all"
+              size="md"
+              className="w-full sm:w-auto px-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-xs transition-all"
               isLoading={isSearching}
             >
-              <Search className="w-4 h-4" />
+              <Search className="w-3.5 h-3.5" />
               Find Colleges
             </Button>
           </div>
@@ -1116,20 +1113,20 @@ export const CutoffSearchPage: React.FC = () => {
       {/* STEP 2: Matching College Results */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-bold">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold">
               2
             </span>
-            <h2 className="text-base font-bold text-gray-900 tracking-tight">
+            <h2 className="text-sm font-bold text-slate-900 tracking-tight">
               {studentPercentile ? 'Recommended Colleges' : 'Matching College Results'}
             </h2>
             {hasSearched && (
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+              <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200/80 font-mono">
                 {filteredGroupedRows.length} {studentPercentile ? 'recommended' : 'matching'} offering{filteredGroupedRows.length === 1 ? '' : 's'}
               </span>
             )}
             {hasSearched && studentPercentile && (
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+              <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-mono">
                 Score: {Number(studentPercentile).toFixed(2)}% (Cutoff ≤ Score)
               </span>
             )}
@@ -1140,23 +1137,23 @@ export const CutoffSearchPage: React.FC = () => {
             <div className="flex items-center gap-2 flex-wrap">
               {/* Quick in-table search */}
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Filter results..."
+                  placeholder="Quick filter results..."
                   value={tableFilter}
                   onChange={(e) => setTableFilter(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary-500 w-40 sm:w-52"
+                  className="pl-8 pr-3 h-8 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600/15 focus:border-blue-600 w-44 sm:w-52 shadow-2xs placeholder:text-slate-400"
                 />
               </div>
 
               {/* Sort by dropdown */}
-              <div className="flex items-center text-xs text-gray-500 border border-gray-300 rounded-lg bg-white px-2 py-1">
-                <ArrowUpDown className="w-3 h-3 mr-1 text-gray-400" />
+              <div className="flex items-center h-8 text-xs text-slate-700 border border-slate-200 rounded-lg bg-white px-2.5 shadow-2xs">
+                <ArrowUpDown className="w-3 h-3 mr-1 text-slate-400" />
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="bg-transparent text-xs text-gray-700 focus:outline-none"
+                  className="bg-transparent text-xs text-slate-700 focus:outline-none cursor-pointer"
                 >
                   <option value="percentile_desc">Cutoff: High to Low</option>
                   <option value="percentile_asc">Cutoff: Low to High</option>
@@ -1166,22 +1163,22 @@ export const CutoffSearchPage: React.FC = () => {
               </div>
 
               {/* Table / Card view toggle */}
-              <div className="flex items-center border border-gray-300 rounded-lg bg-white p-0.5">
+              <div className="flex items-center h-8 border border-slate-200 rounded-lg bg-slate-100 p-0.5 shadow-2xs">
                 <button
                   type="button"
                   onClick={() => setViewMode('table')}
-                  className={`p-1 rounded ${viewMode === 'table' ? 'bg-primary-50 text-primary-700' : 'text-gray-400 hover:text-gray-700'}`}
+                  className={`p-1 rounded-md text-xs transition-colors ${viewMode === 'table' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'}`}
                   title="Table layout"
                 >
-                  <TableIcon className="w-4 h-4" />
+                  <TableIcon className="w-3.5 h-3.5" />
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewMode('cards')}
-                  className={`p-1 rounded ${viewMode === 'cards' ? 'bg-primary-50 text-primary-700' : 'text-gray-400 hover:text-gray-700'}`}
+                  className={`p-1 rounded-md text-xs transition-colors ${viewMode === 'cards' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'}`}
                   title="Card layout"
                 >
-                  <LayoutGrid className="w-4 h-4" />
+                  <LayoutGrid className="w-3.5 h-3.5" />
                 </button>
               </div>
 
@@ -1190,7 +1187,7 @@ export const CutoffSearchPage: React.FC = () => {
                 variant="outline"
                 size="sm"
                 onClick={handleExportCSV}
-                className="flex items-center gap-1.5 text-xs"
+                className="flex items-center gap-1.5 text-xs h-8 text-slate-700 hover:text-slate-900"
               >
                 <Download className="w-3.5 h-3.5" />
                 Export CSV
@@ -1201,19 +1198,20 @@ export const CutoffSearchPage: React.FC = () => {
 
         {/* State 1: Before Searching Initial Prompt */}
         {!hasSearched && (
-          <div className="bg-white border border-dashed border-gray-300 rounded-xl p-12 text-center shadow-sm">
-            <div className="w-12 h-12 rounded-full bg-blue-50 text-primary-600 flex items-center justify-center mx-auto mb-4">
-              <Search className="w-6 h-6" />
+          <div className="bg-white border border-dashed border-slate-200 rounded-xl p-12 text-center shadow-xs">
+            <div className="w-11 h-11 rounded-xl bg-blue-50/80 border border-blue-100 text-blue-600 flex items-center justify-center mx-auto mb-3.5">
+              <Search className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-semibold text-gray-800">Ready for Candidate Consultation</h3>
-            <p className="text-sm text-gray-500 max-w-md mx-auto mt-1 mb-6">
+            <h3 className="text-sm font-semibold text-slate-900">Ready for Candidate Consultation</h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-5">
               Configure student preferences in the form above and click <strong>Find Colleges</strong> to evaluate cutoffs across Round 1, Round 2, Round 3, and Round 4.
             </p>
             <Button
+              size="sm"
               onClick={() => handleFindColleges()}
-              className="bg-primary-600 hover:bg-primary-700 text-white"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
             >
-              <Search className="w-4 h-4 mr-2" />
+              <Search className="w-3.5 h-3.5 mr-1.5" />
               Find Colleges Now
             </Button>
           </div>
@@ -1221,27 +1219,27 @@ export const CutoffSearchPage: React.FC = () => {
 
         {/* State 2: Loading State */}
         {hasSearched && isSearching && (
-          <div className="bg-white border border-gray-200 rounded-xl p-12 text-center shadow-sm">
-            <Spinner className="w-8 h-8 text-primary-600 mx-auto mb-3" />
-            <h4 className="text-sm font-semibold text-gray-800">Searching Admissions Cutoff Database</h4>
-            <p className="text-xs text-gray-500 mt-1">Retrieving matching colleges and round-wise percentiles...</p>
+          <div className="bg-white border border-slate-200/80 rounded-xl p-12 text-center shadow-xs">
+            <Spinner className="w-7 h-7 text-blue-600 mx-auto mb-3" />
+            <h4 className="text-sm font-semibold text-slate-900">Searching Admissions Cutoff Database</h4>
+            <p className="text-xs text-slate-500 mt-1">Retrieving matching colleges and round-wise percentiles...</p>
           </div>
         )}
 
         {/* State 3: Error State */}
         {hasSearched && !isSearching && isError && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-red-800 flex items-start gap-4 shadow-sm">
-            <AlertCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+          <div className="bg-red-50/80 border border-red-200/80 rounded-xl p-5 text-red-900 flex items-start gap-3.5 shadow-xs">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
             <div>
-              <h4 className="text-sm font-bold">Failed to load cutoff data</h4>
-              <p className="text-xs text-red-600 mt-1">
+              <h4 className="text-sm font-semibold">Failed to load cutoff data</h4>
+              <p className="text-xs text-red-700 mt-1">
                 {(error as Error)?.message || 'An unexpected error occurred while querying cutoff records. Please ensure backend service is active.'}
               </p>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => refetch()}
-                className="mt-3 bg-white text-red-700 border-red-300 hover:bg-red-50"
+                className="mt-3 bg-white text-red-700 border-red-300 hover:bg-red-50 text-xs"
               >
                 Retry Search
               </Button>
@@ -1251,19 +1249,20 @@ export const CutoffSearchPage: React.FC = () => {
 
         {/* State 4: Empty Results */}
         {hasSearched && !isSearching && !isError && filteredGroupedRows.length === 0 && (
-          <div className="bg-white border border-gray-200 rounded-xl p-10 text-center shadow-sm">
-            <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-3">
-              <HelpCircle className="w-6 h-6" />
+          <div className="bg-white border border-slate-200/80 rounded-xl p-10 text-center shadow-xs">
+            <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 border border-amber-200/70 flex items-center justify-center mx-auto mb-3">
+              <HelpCircle className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-semibold text-gray-800">No Matching Colleges Found</h3>
-            <p className="text-xs text-gray-500 max-w-md mx-auto mt-1 mb-5">
+            <h3 className="text-sm font-semibold text-slate-900">No Matching Colleges Found</h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-5">
               No college courses in the database matched the selected branch, category, and district combination.
             </p>
-            <div className="flex items-center justify-center gap-3">
+            <div className="flex items-center justify-center gap-2.5">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleResetFilters}
+                className="text-xs"
               >
                 Reset All Filters
               </Button>
@@ -1274,7 +1273,7 @@ export const CutoffSearchPage: React.FC = () => {
                   setSelectedDistricts([]);
                   handleFindColleges();
                 }}
-                className="bg-primary-600 text-white"
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
               >
                 Broaden Search (All Branches & Districts)
               </Button>
@@ -1284,54 +1283,54 @@ export const CutoffSearchPage: React.FC = () => {
 
         {/* State 5: Table View Results */}
         {hasSearched && !isSearching && !isError && filteredGroupedRows.length > 0 && viewMode === 'table' && (
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50/75">
+              <table className="min-w-full divide-y divide-slate-100">
+                <thead className="bg-slate-50/80 border-b border-slate-200/80">
                   <tr>
-                    <th scope="col" className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-1/3">
+                    <th scope="col" className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-1/3">
                       College
                     </th>
-                    <th scope="col" className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-1/4">
-                      Course
+                    <th scope="col" className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-1/4">
+                      Course / Branch
                     </th>
-                    <th scope="col" className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Category / Quota
+                    <th scope="col" className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                      Category & Quota
                     </th>
-                    <th scope="col" className="px-4 py-3.5 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider bg-blue-50/40">
+                    <th scope="col" className="px-4 py-3 text-right text-[11px] font-semibold text-slate-600 uppercase tracking-wider bg-blue-50/30 border-l border-slate-100">
                       Round 1
                     </th>
-                    <th scope="col" className="px-4 py-3.5 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th scope="col" className="px-4 py-3 text-right text-[11px] font-semibold text-slate-600 uppercase tracking-wider border-l border-slate-100">
                       Round 2
                     </th>
-                    <th scope="col" className="px-4 py-3.5 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th scope="col" className="px-4 py-3 text-right text-[11px] font-semibold text-slate-600 uppercase tracking-wider border-l border-slate-100">
                       Round 3
                     </th>
-                    <th scope="col" className="px-4 py-3.5 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th scope="col" className="px-4 py-3 text-right text-[11px] font-semibold text-slate-600 uppercase tracking-wider border-l border-slate-100">
                       Round 4
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200 bg-white text-sm">
+                <tbody className="divide-y divide-slate-100 bg-white text-xs">
                   {filteredGroupedRows.map((row) => (
-                    <tr key={row.key} className="hover:bg-gray-50/80 transition-colors">
+                    <tr key={row.key} className="hover:bg-slate-50/70 transition-colors">
                       {/* College Column */}
                       <td className="px-4 py-3.5 align-top">
-                        <div className="font-semibold text-gray-900 leading-snug">
+                        <div className="font-semibold text-slate-900 leading-snug">
                           {row.collegeName}
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                          <span className="font-mono text-xs text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">
+                          <span className="font-mono text-[11px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/60">
                             {row.collegeCode}
                           </span>
-                          <span className="inline-flex items-center text-xs text-gray-500">
-                            <MapPin className="w-3 h-3 mr-0.5 text-gray-400" />
+                          <span className="inline-flex items-center text-[11px] text-slate-500">
+                            <MapPin className="w-3 h-3 mr-0.5 text-slate-400" />
                             {row.district}
                           </span>
-                          <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded ${
+                          <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded border ${
                             row.collegeType.toLowerCase().includes('autonomous')
-                              ? 'bg-purple-100 text-purple-800'
-                              : 'bg-gray-100 text-gray-700'
+                              ? 'bg-purple-50 text-purple-700 border-purple-200/70'
+                              : 'bg-slate-100 text-slate-600 border-slate-200/70'
                           }`}>
                             {row.collegeType}
                           </span>
@@ -1340,10 +1339,10 @@ export const CutoffSearchPage: React.FC = () => {
 
                       {/* Course Column */}
                       <td className="px-4 py-3.5 align-top">
-                        <div className="font-medium text-gray-900 leading-snug">
+                        <div className="font-medium text-slate-800 leading-snug">
                           {row.courseName}
                         </div>
-                        <div className="font-mono text-[11px] text-gray-400 mt-1">
+                        <div className="font-mono text-[11px] text-slate-400 mt-1">
                           Code: {row.courseCode}
                         </div>
                       </td>
@@ -1351,16 +1350,16 @@ export const CutoffSearchPage: React.FC = () => {
                       {/* Category & Quota */}
                       <td className="px-4 py-3.5 align-top">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-900">
+                          <span className="font-mono font-semibold text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200/60">
                             {row.categoryCode}
                           </span>
                         </div>
-                        <div className="text-[11px] text-gray-500 mt-1 flex flex-col gap-0.5">
+                        <div className="text-[11px] text-slate-500 mt-1 flex flex-col gap-0.5">
                           <span>
                             Quota: {row.seatSection.replace(/_/g, ' ')}
                           </span>
                           {row.gender && (
-                            <span className="capitalize text-gray-400">
+                            <span className="capitalize text-slate-400">
                               Gender: {row.gender}
                             </span>
                           )}
@@ -1368,22 +1367,22 @@ export const CutoffSearchPage: React.FC = () => {
                       </td>
 
                       {/* Round 1 */}
-                      <td className="px-4 py-3.5 align-top text-right bg-blue-50/20">
+                      <td className="px-4 py-3.5 align-top text-right bg-blue-50/20 border-l border-slate-100">
                         {renderRoundCell(row.rounds[1])}
                       </td>
 
                       {/* Round 2 */}
-                      <td className="px-4 py-3.5 align-top text-right">
+                      <td className="px-4 py-3.5 align-top text-right border-l border-slate-100">
                         {renderRoundCell(row.rounds[2])}
                       </td>
 
                       {/* Round 3 */}
-                      <td className="px-4 py-3.5 align-top text-right">
+                      <td className="px-4 py-3.5 align-top text-right border-l border-slate-100">
                         {renderRoundCell(row.rounds[3])}
                       </td>
 
                       {/* Round 4 */}
-                      <td className="px-4 py-3.5 align-top text-right">
+                      <td className="px-4 py-3.5 align-top text-right border-l border-slate-100">
                         {renderRoundCell(row.rounds[4])}
                       </td>
                     </tr>
@@ -1400,71 +1399,71 @@ export const CutoffSearchPage: React.FC = () => {
             {filteredGroupedRows.map((row) => (
               <div
                 key={row.key}
-                className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:border-primary-300 transition-all flex flex-col justify-between"
+                className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between"
               >
                 <div>
                   {/* Card Header */}
                   <div className="flex items-start justify-between gap-2 mb-2">
-                    <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-900">
+                    <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200/60">
                       {row.categoryCode}
                     </span>
-                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded ${
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded border ${
                       row.collegeType.toLowerCase().includes('autonomous')
-                        ? 'bg-purple-100 text-purple-800'
-                        : 'bg-gray-100 text-gray-700'
+                        ? 'bg-purple-50 text-purple-700 border-purple-200/70'
+                        : 'bg-slate-100 text-slate-600 border-slate-200/70'
                     }`}>
                       {row.collegeType}
                     </span>
                   </div>
 
-                  <h3 className="font-bold text-gray-900 text-base leading-snug">
+                  <h3 className="font-bold text-slate-900 text-sm leading-snug">
                     {row.collegeName}
                   </h3>
 
-                  <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 mb-3">
-                    <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">
+                  <div className="flex items-center gap-2 text-xs text-slate-500 mt-1 mb-3">
+                    <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/60 text-[11px]">
                       {row.collegeCode}
                     </span>
                     <span>•</span>
-                    <span className="flex items-center">
-                      <MapPin className="w-3 h-3 mr-0.5 text-gray-400" />
+                    <span className="flex items-center text-[11px]">
+                      <MapPin className="w-3 h-3 mr-0.5 text-slate-400" />
                       {row.district}
                     </span>
                   </div>
 
-                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 mb-4">
-                    <div className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-0.5">
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 mb-4">
+                    <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-0.5">
                       Course / Branch
                     </div>
-                    <div className="font-medium text-gray-900 text-sm">
+                    <div className="font-medium text-slate-900 text-xs">
                       {row.courseName}
                     </div>
-                    <div className="text-[11px] font-mono text-gray-400 mt-0.5">
+                    <div className="text-[11px] font-mono text-slate-400 mt-0.5">
                       Choice Code: {row.courseCode}
                     </div>
                   </div>
                 </div>
 
                 {/* 4-Round Grid */}
-                <div className="pt-3 border-t border-gray-100">
-                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                <div className="pt-3 border-t border-slate-100">
+                  <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
                     Round-wise Cutoffs
                   </div>
                   <div className="grid grid-cols-4 gap-2 text-center">
-                    <div className="p-2 bg-blue-50/50 rounded-lg border border-blue-100">
+                    <div className="p-2 bg-blue-50/40 rounded-lg border border-blue-100">
                       <div className="text-[10px] font-bold text-blue-900 uppercase">Round 1</div>
                       <div className="mt-1">{renderRoundCell(row.rounds[1])}</div>
                     </div>
-                    <div className="p-2 bg-gray-50 rounded-lg border border-gray-100">
-                      <div className="text-[10px] font-bold text-gray-600 uppercase">Round 2</div>
+                    <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                      <div className="text-[10px] font-bold text-slate-600 uppercase">Round 2</div>
                       <div className="mt-1">{renderRoundCell(row.rounds[2])}</div>
                     </div>
-                    <div className="p-2 bg-gray-50 rounded-lg border border-gray-100">
-                      <div className="text-[10px] font-bold text-gray-600 uppercase">Round 3</div>
+                    <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                      <div className="text-[10px] font-bold text-slate-600 uppercase">Round 3</div>
                       <div className="mt-1">{renderRoundCell(row.rounds[3])}</div>
                     </div>
-                    <div className="p-2 bg-gray-50 rounded-lg border border-gray-100">
-                      <div className="text-[10px] font-bold text-gray-600 uppercase">Round 4</div>
+                    <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                      <div className="text-[10px] font-bold text-slate-600 uppercase">Round 4</div>
                       <div className="mt-1">{renderRoundCell(row.rounds[4])}</div>
                     </div>
                   </div>
@@ -1476,13 +1475,13 @@ export const CutoffSearchPage: React.FC = () => {
 
         {/* Results Info & Truncation Warning */}
         {hasSearched && !isSearching && !isError && filteredGroupedRows.length > 0 && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl px-5 py-3.5 shadow-sm">
-            <div className="text-xs text-gray-500">
-              Showing <span className="font-semibold text-gray-800">{filteredGroupedRows.length}</span> grouped offerings from{' '}
-              <span className="font-semibold text-gray-800">{totalInfo.total.toLocaleString()}</span> total cutoff records
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white border border-slate-200/80 rounded-xl px-5 py-3 shadow-xs">
+            <div className="text-xs text-slate-500">
+              Showing <span className="font-semibold text-slate-800">{filteredGroupedRows.length}</span> grouped offerings from{' '}
+              <span className="font-semibold text-slate-800">{totalInfo.total.toLocaleString()}</span> total cutoff records
             </div>
             {totalInfo.anyTruncated && (
-              <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg">
+              <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200/80 px-3 py-1.5 rounded-lg">
                 <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
                 <span>Some results are truncated. Use more specific filters (branch, category, district) to see all data.</span>
               </div>

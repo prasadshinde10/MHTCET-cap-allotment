@@ -17,20 +17,20 @@ export const Button: React.FC<ButtonProps> = ({
   disabled,
   ...props
 }) => {
-  const baseStyles = 'inline-flex items-center justify-center font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors';
+  const baseStyles = 'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-150 select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none active:scale-[0.99]';
   
   const variants = {
-    primary: 'bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500',
-    secondary: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-primary-500',
-    outline: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-primary-500',
-    danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
-    ghost: 'bg-transparent text-gray-700 hover:bg-gray-100 focus:ring-gray-500',
+    primary: 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-sm border border-blue-600/10 focus-visible:ring-blue-600/30',
+    secondary: 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900 active:bg-slate-100 shadow-sm focus-visible:ring-slate-400/30',
+    outline: 'bg-transparent text-slate-700 border border-slate-300 hover:bg-slate-50 hover:text-slate-900 active:bg-slate-100 focus-visible:ring-slate-400/30',
+    danger: 'bg-red-600 text-white hover:bg-red-700 active:bg-red-800 shadow-sm focus-visible:ring-red-600/30',
+    ghost: 'bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900 active:bg-slate-200 focus-visible:ring-slate-400/30',
   };
   
   const sizes = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-sm',
-    lg: 'px-6 py-3 text-base',
+    sm: 'px-2.5 py-1.5 text-xs gap-1.5 h-8',
+    md: 'px-3.5 py-2 text-xs font-semibold gap-2 h-9',
+    lg: 'px-5 py-2.5 text-sm font-semibold gap-2.5 h-10',
   };
 
   return (
@@ -39,13 +39,12 @@ export const Button: React.FC<ButtonProps> = ({
         baseStyles,
         variants[variant],
         sizes[size],
-        (disabled || isLoading) && 'opacity-50 cursor-not-allowed',
         className
       )}
       disabled={disabled || isLoading}
       {...props}
     >
-      {isLoading && <Spinner className="w-4 h-4 mr-2" />}
+      {isLoading && <Spinner className="w-3.5 h-3.5 mr-1.5 text-current" />}
       {children}
     </button>
   );

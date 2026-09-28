@@ -1,6 +1,6 @@
 import React from 'react';
-import { Card } from './ui/Card';
 import { LucideIcon, Activity } from 'lucide-react';
+import { cn } from '../utils/utils';
 
 interface StatsCardProps {
   title?: string;
@@ -12,6 +12,7 @@ interface StatsCardProps {
   iconBg?: string;
   trend?: string;
   subtitle?: string;
+  className?: string;
 }
 
 export const StatsCard: React.FC<StatsCardProps> = ({
@@ -19,32 +20,30 @@ export const StatsCard: React.FC<StatsCardProps> = ({
   label,
   value,
   icon: Icon = Activity,
-  color,
-  iconColor,
-  iconBg,
+  iconColor = 'text-blue-600',
+  iconBg = 'bg-blue-50 border-blue-200/60',
   trend,
-  subtitle
+  subtitle,
+  className
 }) => {
   const displayLabel = title || label || '';
-  const resolvedIconColor = iconColor || (color ? `text-${color}-600` : 'text-primary-600');
-  const resolvedIconBg = iconBg || (color ? `bg-${color}-100` : 'bg-primary-100');
 
   return (
-    <Card className="flex items-center p-5">
-      <div className={`p-3 rounded-md ${resolvedIconBg} ${resolvedIconColor} mr-5`}>
-        <Icon className="w-6 h-6" />
-      </div>
-      <div>
-        <p className="text-sm font-medium text-gray-500 truncate">{displayLabel}</p>
-        <p className="mt-1 text-2xl font-semibold text-gray-900">{value}</p>
+    <div className={cn("bg-white rounded-xl border border-slate-200/90 p-4 shadow-sm flex items-center justify-between gap-3", className)}>
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 truncate">{displayLabel}</p>
+        <p className="mt-1 text-xl font-bold text-slate-900 tracking-tight">{value}</p>
         {(trend || subtitle) && (
-          <p className="mt-1 text-sm text-gray-500">
-            {trend && <span className="text-green-600 font-medium mr-2">{trend}</span>}
+          <p className="mt-0.5 text-[11px] text-slate-500 truncate">
+            {trend && <span className="text-emerald-600 font-semibold mr-1.5">{trend}</span>}
             {subtitle}
           </p>
         )}
       </div>
-    </Card>
+      <div className={cn("w-10 h-10 rounded-lg border flex items-center justify-center flex-shrink-0", iconBg, iconColor)}>
+        <Icon className="w-5 h-5" />
+      </div>
+    </div>
   );
 };
 
