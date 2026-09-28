@@ -284,6 +284,10 @@ def reset_database(
         except Exception:
             pass
         try:
+            conn.exec_driver_sql("DELETE FROM all_india_cutoff_records;")
+        except Exception:
+            pass
+        try:
             conn.exec_driver_sql("UPDATE cap_rounds SET total_records = 0, total_pages = 0, processing_status = 'PENDING';")
         except Exception:
             pass

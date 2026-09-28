@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import select, desc, asc, func, or_
+from sqlalchemy import select, desc, asc, func, or_, and_, not_
 from typing import List, Optional
 import io
 import csv
 import math
+import re
 
 from app.database import get_db
 from app.auth.security import get_current_admin
@@ -35,7 +36,9 @@ def get_cutoff_query(
     min_merit: Optional[int] = None,
     max_merit: Optional[int] = None,
     is_deleted: Optional[bool] = False,
-    quota_group: Optional[str] = None
+    quota_group: Optional[str] = None,
+    college_type: Optional[str] = None,
+    funding_type: Optional[str] = None
 ):
     stmt = select(Cutoff, College, Course, CapRound)\
         .join(Course, Course.id == Cutoff.course_id)\
@@ -56,15 +59,35 @@ def get_cutoff_query(
     if cap_round_id is not None:
         stmt = stmt.where(Cutoff.cap_round_id == cap_round_id)
         
-    if college:
-        stmt = stmt.where(
-            or_(
-                College.college_code.ilike(f"%{college}%"),
-                College.college_name.ilike(f"%{college}%")
-            )
-        )
-    elif college_code:
-        stmt = stmt.where(College.college_code == college_code)
+    if college_code:
+        code_items = [c.strip() for c in college_code.split(',') if c.strip()]
+        if len(code_items) == 1:
+            stmt = stmt.where(College.college_code == code_items[0])
+        elif len(code_items) > 1:
+            stmt = stmt.where(College.college_code.in_(code_items))
+    elif college:
+        college_items = [c.strip() for c in college.split(',') if c.strip()]
+        if all(re.match(r'^\d{4,5}[A-Za-z]?$', c) for c in college_items):
+            if len(college_items) == 1:
+                stmt = stmt.where(College.college_code == college_items[0])
+            else:
+                stmt = stmt.where(College.college_code.in_(college_items))
+        else:
+            clean_name = college.strip()
+            exact_match = db.query(College.id).filter(College.college_name.ilike(clean_name)).first()
+            if exact_match:
+                stmt = stmt.where(College.college_name.ilike(clean_name))
+            else:
+                college_conditions = [
+                    or_(
+                        College.college_code == c_val,
+                        College.college_name == c_val,
+                        College.college_name.ilike(f"%{c_val}%"),
+                        College.college_code.ilike(f"%{c_val}%")
+                    )
+                    for c_val in college_items
+                ]
+                stmt = stmt.where(or_(*college_conditions))
 
     if course:
         course_items = [c.strip() for c in course.split(',') if c.strip()]
@@ -149,6 +172,44 @@ def get_cutoff_query(
 
     if is_deleted is not None:
         stmt = stmt.where(Cutoff.is_deleted == is_deleted)
+
+    if college_type:
+        ct = college_type.strip().lower()
+        if ct == 'autonomous':
+            stmt = stmt.where(College.college_type == 'Autonomous')
+        elif ct in ['non-autonomous', 'non autonomous', 'nonautonomous']:
+            stmt = stmt.where(College.college_type == 'Non-Autonomous')
+        else:
+            stmt = stmt.where(College.college_type.ilike(f"%{college_type}%"))
+
+    if funding_type:
+        ft = funding_type.strip().lower()
+        if ft == 'government':
+            stmt = stmt.where(
+                or_(
+                    College.funding_type.ilike('%Government%'),
+                    College.college_name.ilike('%Government%'),
+                    College.college_name.ilike('%Govt%'),
+                    College.college_name.ilike('%VJTI%'),
+                    College.college_name.ilike('%University Department%'),
+                    College.college_name.ilike('%Institute of Chemical Technology%'),
+                    College.college_name.ilike('%Lahoti%')
+                )
+            )
+        elif ft == 'private':
+            stmt = stmt.where(
+                and_(
+                    College.funding_type.ilike('%Private%'),
+                    not_(College.college_name.ilike('%Government%')),
+                    not_(College.college_name.ilike('%Govt%')),
+                    not_(College.college_name.ilike('%VJTI%')),
+                    not_(College.college_name.ilike('%University Department%')),
+                    not_(College.college_name.ilike('%Institute of Chemical Technology%')),
+                    not_(College.college_name.ilike('%Lahoti%'))
+                )
+            )
+        else:
+            stmt = stmt.where(College.funding_type.ilike(f"%{funding_type}%"))
         
     return stmt
 
@@ -176,6 +237,8 @@ def list_cutoffs(
     sort_by: Optional[str] = Query("percentile_desc"),
     is_deleted: Optional[bool] = False,
     quota_group: Optional[str] = None,
+    college_type: Optional[str] = None,
+    funding_type: Optional[str] = None,
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin)
 ):
@@ -202,7 +265,9 @@ def list_cutoffs(
         min_merit=min_merit,
         max_merit=max_merit,
         is_deleted=is_deleted,
-        quota_group=quota_group
+        quota_group=quota_group,
+        college_type=college_type,
+        funding_type=funding_type
     )
     
     # Total count query
@@ -266,6 +331,9 @@ def export_cutoffs(
     max_merit: Optional[int] = None,
     sort_by: Optional[str] = Query("percentile_desc"),
     is_deleted: Optional[bool] = False,
+    quota_group: Optional[str] = None,
+    college_type: Optional[str] = None,
+    funding_type: Optional[str] = None,
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin)
 ):
@@ -287,7 +355,10 @@ def export_cutoffs(
         max_percentile=max_percentile,
         min_merit=min_merit,
         max_merit=max_merit,
-        is_deleted=is_deleted
+        is_deleted=is_deleted,
+        quota_group=quota_group,
+        college_type=college_type,
+        funding_type=funding_type
     )
 
     if sort_by == "percentile_asc":

@@ -47,5 +47,8 @@ export interface CutoffFilters {
   max_merit?: number;
   sort_by?: string;
   is_deleted?: boolean;
+  quota_group?: string;
+  college_type?: string;
+  funding_type?: string;
 }
 
