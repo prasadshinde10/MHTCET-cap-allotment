@@ -398,6 +398,11 @@ class PDFImporter:
         for crs in self.db.execute(select(Course)).scalars().all():
             course_cache[(crs.college_id, crs.course_code)] = crs
 
+        # Ensure clean idempotent execution: clear any existing cutoffs for this batch or source PDF
+        self.db.execute(Cutoff.__table__.delete().where(Cutoff.import_batch_id == self.batch_id))
+        self.db.execute(Cutoff.__table__.delete().where(Cutoff.source_pdf == pdf_path.name))
+        self.db.commit()
+
         # Route to All India ingestion if document is All India Cutoff PDF
         if self.is_all_india_pdf(doc, pdf_path.name):
             logger.info(f"Detected All India Cutoff PDF for batch {self.batch_id}. Invoking All India extractor.")
@@ -408,205 +413,221 @@ class PDFImporter:
         new_courses_count = 0
 
         for page_idx in range(num_pages):
-            page = doc[page_idx]
-            page_text = page.get_text()
-            if "Stage" not in page_text:
-                continue
-
-            tabs = page.find_tables()
-            if not tabs.tables:
-
-                continue
-
-            blocks = page.get_text("blocks")
-            page_lines = []
-            for b in blocks:
-                b_top = b[1]
-                for line in b[4].splitlines():
-                    line_str = line.strip()
-                    if line_str:
-                        page_lines.append((b_top, line_str))
-
-            table_list = sorted(tabs.tables, key=lambda t: t.bbox[1])
-            prev_table_bottom = 0
-
-            for tab in table_list:
-                tab_top = tab.bbox[1]
-                tab_bottom = tab.bbox[3]
-
-                current_college_code, current_college_name = None, None
-                current_course_code, current_course_name = None, None
-                current_status = None
-                quota_title = None
-
-                for idx_line, (b_top, ls) in enumerate(page_lines):
-                    if b_top < tab_top:
-                        col_match = _COL_REGEX.match(ls)
-                        if col_match:
-                            current_college_code, current_college_name = col_match.group(1), col_match.group(2).strip()
-                        crs_match = _CRS_REGEX.match(ls)
-                        if crs_match:
-                            current_course_code, current_course_name = crs_match.group(1), crs_match.group(2).strip()
-                        if ls.startswith("Status:"):
-                            st_val = ls.replace("Status:", "").strip()
-                            if not st_val and idx_line + 1 < len(page_lines):
-                                next_top, next_ls = page_lines[idx_line + 1]
-                                if next_top < tab_top and not next_ls.startswith("Stage"):
-                                    st_val = next_ls
-                            if st_val:
-                                current_status = st_val
-
-                    if prev_table_bottom <= b_top < tab_top:
-                        if (
-                            ls
-                            and not _COL_REGEX.match(ls)
-                            and not _CRS_REGEX.match(ls)
-                            and not ls.startswith("Status:")
-                            and not ls.startswith("State Common")
-                            and not ls.startswith("Cut Off List")
-                            and not ls.startswith("Government of")
-                            and not ls.startswith("Degree Courses")
-                            and ls != "Stage"
-                            and not ls.startswith("Legends:")
-                            and not ls.startswith("Maharashtra State Seats")
-                        ):
-                            quota_title = ls
-
-                if not current_college_code or not current_course_code:
-                    prev_table_bottom = tab_bottom
+            try:
+                page = doc[page_idx]
+                page_text = page.get_text()
+                if "Stage" not in page_text:
+                    result.pages_processed = page_idx + 1
+                    if batch:
+                        batch.pages_processed = page_idx + 1
+                        self.db.commit()
                     continue
 
-                status_lower = f"{current_college_name or ''} {current_status or ''}".lower()
-                if "government" in status_lower or "govt" in status_lower or "university department" in status_lower:
-                    governance_type = "Government"
-                else:
-                    governance_type = "Private"
+                blocks = page.get_text("blocks")
+                page_lines = []
+                for b in blocks:
+                    b_top = b[1]
+                    for line in b[4].splitlines():
+                        line_str = line.strip()
+                        if line_str:
+                            page_lines.append((b_top, line_str))
 
-                # Ensure College exists in DB
-                if current_college_code not in college_cache:
-                    inst_meta = INSTITUTES_DATA.get(str(current_college_code).zfill(5))
-                    if inst_meta:
-                        col_district = inst_meta.get("district") or "Maharashtra"
-                        col_type = inst_meta.get("college_type") or ("Autonomous" if "autonomous" in status_lower else "Non-Autonomous")
-                        col_funding = inst_meta.get("funding_type") or governance_type
-                        col_minority = inst_meta.get("minority_status") or ("Minority" if "minority" in status_lower else "Non-Minority")
-                        col_univ = inst_meta.get("home_university") or ""
-                        col_name = inst_meta.get("name") or current_college_name
+                tabs = page.find_tables()
+                if not tabs.tables:
+                    result.pages_processed = page_idx + 1
+                    if batch:
+                        batch.pages_processed = page_idx + 1
+                        self.db.commit()
+                    continue
+
+                table_list = sorted(tabs.tables, key=lambda t: t.bbox[1])
+                prev_table_bottom = 0
+
+                for tab in table_list:
+                    tab_top = tab.bbox[1]
+                    tab_bottom = tab.bbox[3]
+
+                    current_college_code, current_college_name = None, None
+                    current_course_code, current_course_name = None, None
+                    current_status = None
+                    quota_title = None
+
+                    for idx_line, (b_top, ls) in enumerate(page_lines):
+                        if b_top < tab_top:
+                            col_match = _COL_REGEX.match(ls)
+                            if col_match:
+                                current_college_code, current_college_name = col_match.group(1), col_match.group(2).strip()
+                            crs_match = _CRS_REGEX.match(ls)
+                            if crs_match:
+                                current_course_code, current_course_name = crs_match.group(1), crs_match.group(2).strip()
+                            if ls.startswith("Status:"):
+                                st_val = ls.replace("Status:", "").strip()
+                                if not st_val and idx_line + 1 < len(page_lines):
+                                    next_top, next_ls = page_lines[idx_line + 1]
+                                    if next_top < tab_top and not next_ls.startswith("Stage"):
+                                        st_val = next_ls
+                                if st_val:
+                                    current_status = st_val
+
+                        if prev_table_bottom <= b_top < tab_top:
+                            if (
+                                ls
+                                and not _COL_REGEX.match(ls)
+                                and not _CRS_REGEX.match(ls)
+                                and not ls.startswith("Status:")
+                                and not ls.startswith("State Common")
+                                and not ls.startswith("Cut Off List")
+                                and not ls.startswith("Government of")
+                                and not ls.startswith("Degree Courses")
+                                and ls != "Stage"
+                                and not ls.startswith("Legends:")
+                                and not ls.startswith("Maharashtra State Seats")
+                            ):
+                                quota_title = ls
+
+                    if not current_college_code or not current_course_code:
+                        prev_table_bottom = tab_bottom
+                        continue
+
+                    status_lower = f"{current_college_name or ''} {current_status or ''}".lower()
+                    if "government" in status_lower or "govt" in status_lower or "university department" in status_lower:
+                        governance_type = "Government"
                     else:
-                        col_district = extract_district(current_college_name)
-                        col_type = "Autonomous" if "autonomous" in status_lower else "Non-Autonomous"
-                        col_funding = governance_type
-                        col_minority = "Minority" if "minority" in status_lower else "Non-Minority"
-                        col_univ = ""
-                        col_name = current_college_name
+                        governance_type = "Private"
 
-                    col_obj = College(
-                        college_code=current_college_code,
-                        college_name=col_name,
-                        city=col_district,
-                        district=col_district,
-                        college_type=col_type,
-                        funding_type=col_funding,
-                        minority_status=col_minority,
-                        home_university=col_univ,
-                        status="Active"
-                    )
-                    self.db.add(col_obj)
-                    self.db.flush()
-                    college_cache[current_college_code] = col_obj
-                    new_colleges_count += 1
-                col_obj = college_cache[current_college_code]
+                    # Ensure College exists in DB
+                    if current_college_code not in college_cache:
+                        inst_meta = INSTITUTES_DATA.get(str(current_college_code).zfill(5))
+                        if inst_meta:
+                            col_district = inst_meta.get("district") or "Maharashtra"
+                            col_type = inst_meta.get("college_type") or ("Autonomous" if "autonomous" in status_lower else "Non-Autonomous")
+                            col_funding = inst_meta.get("funding_type") or governance_type
+                            col_minority = inst_meta.get("minority_status") or ("Minority" if "minority" in status_lower else "Non-Minority")
+                            col_univ = inst_meta.get("home_university") or ""
+                            col_name = inst_meta.get("name") or current_college_name
+                        else:
+                            col_district = extract_district(current_college_name)
+                            col_type = "Autonomous" if "autonomous" in status_lower else "Non-Autonomous"
+                            col_funding = governance_type
+                            col_minority = "Minority" if "minority" in status_lower else "Non-Minority"
+                            col_univ = ""
+                            col_name = current_college_name
 
-                # Ensure Course exists in DB
-                course_key = (col_obj.id, current_course_code)
-                if course_key not in course_cache:
-                    crs_obj = Course(
-                        college_id=col_obj.id,
-                        course_code=current_course_code,
-                        course_name=current_course_name or "Engineering Course"
-                    )
-                    self.db.add(crs_obj)
-                    self.db.flush()
-                    course_cache[course_key] = crs_obj
-                    new_courses_count += 1
-                crs_obj = course_cache[course_key]
+                        col_obj = College(
+                            college_code=current_college_code,
+                            college_name=col_name,
+                            city=col_district,
+                            district=col_district,
+                            college_type=col_type,
+                            funding_type=col_funding,
+                            minority_status=col_minority,
+                            home_university=col_univ,
+                            status="Active"
+                        )
+                        self.db.add(col_obj)
+                        self.db.flush()
+                        college_cache[current_college_code] = col_obj
+                        new_colleges_count += 1
+                    col_obj = college_cache[current_college_code]
 
-                df = tab.extract()
-                if not df or len(df) < 2:
+                    # Ensure Course exists in DB
+                    course_key = (col_obj.id, current_course_code)
+                    if course_key not in course_cache:
+                        crs_obj = Course(
+                            college_id=col_obj.id,
+                            course_code=current_course_code,
+                            course_name=current_course_name or "Engineering Course"
+                        )
+                        self.db.add(crs_obj)
+                        self.db.flush()
+                        course_cache[course_key] = crs_obj
+                        new_courses_count += 1
+                    crs_obj = course_cache[course_key]
+
+                    df = tab.extract()
+                    if not df or len(df) < 2:
+                        prev_table_bottom = tab_bottom
+                        continue
+
+                    header = [c.replace("\n", "").strip() if c else "" for c in df[0]]
+                    is_cutoff_table = False
+                    if header:
+                        if header[0] == "Stage":
+                            is_cutoff_table = True
+                        elif len(header) > 1 and any(cat in (header[1] or "") for cat in ["OPEN", "SC", "ST", "OBC", "VJ", "NT", "EWS", "TFWS", "SEBC"]):
+                            is_cutoff_table = True
+
+                    if not is_cutoff_table:
+                        prev_table_bottom = tab_bottom
+                        continue
+
+                    categories = header[1:]
+
+                    for row in df[1:]:
+                        stage_str = row[0].replace("\n", "").strip() if row[0] else "Stage-I"
+                        cell_values = row[1:]
+                        for cat, cell in zip(categories, cell_values):
+                            cell_clean = cell.strip() if cell else ""
+                            if not cell_clean:
+                                continue
+                            parts = cell_clean.split("\n")
+                            rank_str = parts[0].strip()
+                            perc_str = parts[1].strip() if len(parts) >= 2 else ""
+                            perc_str = perc_str.replace("(", "").replace(")", "").strip()
+
+                            try:
+                                rank = int(rank_str)
+                                perc = float(perc_str) if perc_str else None
+                                seat_category = parse_category_meta(cat)
+                                reservation_level = parse_reservation_level(quota_title, cat)
+
+                                gender = "Ladies" if cat.upper().startswith("L") else "General"
+
+                                cutoff_entry = Cutoff(
+                                    year=self.year,
+                                    cap_round_id=self.cap_round_id,
+                                    course_id=crs_obj.id,
+                                    import_batch_id=self.batch_id,
+                                    seat_section=quota_title or reservation_level or "State Level",
+                                    seat_section_raw=quota_title,
+                                    category_code=cat,
+                                    gender=gender,
+                                    seat_category=seat_category,
+                                    seat_location=reservation_level,
+                                    stage=stage_str,
+                                    merit_number=rank,
+                                    percentile=perc,
+                                    source_page=page_idx + 1,
+                                    source_pdf=pdf_path.name
+                                )
+                                new_cutoffs.append(cutoff_entry)
+
+                                # Batch commit in chunks of 2,000 for high performance and low memory
+                                if len(new_cutoffs) >= 2000:
+                                    self.db.bulk_save_objects(new_cutoffs)
+                                    self.db.commit()
+                                    result.records_created += len(new_cutoffs)
+                                    new_cutoffs = []
+
+                            except (ValueError, TypeError):
+                                result.warnings += 1
+
                     prev_table_bottom = tab_bottom
-                    continue
 
-                header = [c.replace("\n", "").strip() if c else "" for c in df[0]]
-                is_cutoff_table = False
-                if header:
-                    if header[0] == "Stage":
-                        is_cutoff_table = True
-                    elif len(header) > 1 and any(cat in (header[1] or "") for cat in ["OPEN", "SC", "ST", "OBC", "VJ", "NT", "EWS", "TFWS", "SEBC"]):
-                        is_cutoff_table = True
+                # Update real-time progress for each page
+                result.pages_processed = page_idx + 1
+                if batch:
+                    batch.pages_processed = page_idx + 1
+                    batch.records_created = result.records_created + len(new_cutoffs)
+                    self.db.commit()
 
-                if not is_cutoff_table:
-                    prev_table_bottom = tab_bottom
-                    continue
-
-                categories = header[1:]
-
-                for row in df[1:]:
-                    stage_str = row[0].replace("\n", "").strip() if row[0] else "Stage-I"
-                    cell_values = row[1:]
-                    for cat, cell in zip(categories, cell_values):
-                        cell_clean = cell.strip() if cell else ""
-                        if not cell_clean:
-                            continue
-                        parts = cell_clean.split("\n")
-                        rank_str = parts[0].strip()
-                        perc_str = parts[1].strip() if len(parts) >= 2 else ""
-                        perc_str = perc_str.replace("(", "").replace(")", "").strip()
-
-                        try:
-                            rank = int(rank_str)
-                            perc = float(perc_str) if perc_str else None
-                            seat_category = parse_category_meta(cat)
-                            reservation_level = parse_reservation_level(quota_title, cat)
-
-                            gender = "Ladies" if cat.upper().startswith("L") else "General"
-
-                            cutoff_entry = Cutoff(
-                                year=self.year,
-                                cap_round_id=self.cap_round_id,
-                                course_id=crs_obj.id,
-                                import_batch_id=self.batch_id,
-                                seat_section=quota_title or reservation_level or "State Level",
-                                seat_section_raw=quota_title,
-                                category_code=cat,
-                                gender=gender,
-                                seat_category=seat_category,
-                                seat_location=reservation_level,
-                                stage=stage_str,
-                                merit_number=rank,
-                                percentile=perc,
-                                source_page=page_idx + 1,
-                                source_pdf=pdf_path.name
-                            )
-                            new_cutoffs.append(cutoff_entry)
-
-                            # Batch commit in chunks of 2,000 for high performance and low memory
-                            if len(new_cutoffs) >= 2000:
-                                self.db.bulk_save_objects(new_cutoffs)
-                                self.db.commit()
-                                result.records_created += len(new_cutoffs)
-                                new_cutoffs = []
-
-                        except (ValueError, TypeError):
-                            result.warnings += 1
-
-                prev_table_bottom = tab_bottom
-
-            # Update real-time progress for each page
-            result.pages_processed = page_idx + 1
-            if batch:
-                batch.pages_processed = page_idx + 1
-                batch.records_created = result.records_created + len(new_cutoffs)
-                self.db.commit()
+            except Exception as page_err:
+                logger.warning(f"Warning processing page {page_idx + 1} of {pdf_path.name}: {page_err}")
+                result.warnings += 1
+                result.pages_processed = page_idx + 1
+                if batch:
+                    batch.pages_processed = page_idx + 1
+                    self.db.commit()
 
         # Commit remaining records
         if new_cutoffs:

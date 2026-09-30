@@ -27,12 +27,43 @@ from app.models.cutoff import Cutoff
 from app.models.college import College
 from app.models.course import Course
 import logging
+import re
+try:
+    import fitz
+except ImportError:
+    fitz = None
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 settings = get_settings()
 MAX_UPLOAD_SIZE_MB = getattr(settings, 'MAX_UPLOAD_SIZE_MB', 100)
+
+_ROMAN_MAP = {'I': 1, 'II': 2, 'III': 3, 'IV': 4, '1': 1, '2': 2, '3': 3, '4': 4}
+_ROUND_REGEX = re.compile(r'CAP\s*Round\s*[-–—:]*\s*([IVXivx\d]+)', re.IGNORECASE)
+
+def detect_pdf_round(pdf_bytes: bytes, filename: str = '') -> int | None:
+    """Inspects the PDF text (first 3 pages) and filename to detect which CAP Round it belongs to."""
+    if fitz:
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            for page_idx in range(min(3, len(doc))):
+                text = doc[page_idx].get_text()
+                match = _ROUND_REGEX.search(text)
+                if match:
+                    val = match.group(1).upper()
+                    if val in _ROMAN_MAP:
+                        return _ROMAN_MAP[val]
+        except Exception as e:
+            logger.warning(f"Could not read PDF bytes for round detection: {e}")
+
+    # Fallback to filename pattern if text inspection was inconclusive
+    fn_match = re.search(r'CAP\s*[-_]?\s*(?:Round\s*[-_]?)?([1-4]|I{1,3}|IV)', filename, re.IGNORECASE)
+    if fn_match:
+        val = fn_match.group(1).upper()
+        return _ROMAN_MAP.get(val)
+
+    return None
 
 UPLOAD_DIRECTORY = Path(__file__).resolve().parent.parent.parent.parent / "storage" / "uploads"
 UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
@@ -59,6 +90,14 @@ def upload_pdf(
     if len(content) > MAX_UPLOAD_SIZE_MB * 1024 * 1024:
         raise HTTPException(status_code=400, detail=f"File too large. Max {MAX_UPLOAD_SIZE_MB}MB")
 
+    # Validate that PDF content matches selected CAP Round
+    detected_round = detect_pdf_round(content, file.filename)
+    if detected_round and detected_round != round_number:
+        raise HTTPException(
+            status_code=400,
+            detail=f"CAP Round mismatch! You selected 'CAP Round {round_number}', but the uploaded PDF is for 'CAP Round {detected_round}'. Please select CAP Round {detected_round} or upload the correct PDF."
+        )
+
     file_hash = hashlib.sha256(content).hexdigest()
 
     # Check for duplicate
@@ -74,7 +113,9 @@ def upload_pdf(
                 file_hash=existing.file_hash,
                 message="File ready for processing"
             )
-        # Allow re-uploading to re-parse
+        # Allow re-uploading to re-parse: cleanly remove prior imported cutoffs for this file/batch
+        db.execute(Cutoff.__table__.delete().where(Cutoff.import_batch_id == existing.id))
+        db.execute(Cutoff.__table__.delete().where(Cutoff.source_pdf == file.filename))
         db.execute(StagingCutoff.__table__.delete().where(StagingCutoff.import_batch_id == existing.id))
         db.execute(ImportLog.__table__.delete().where(ImportLog.import_batch_id == existing.id))
         db.execute(ParserError.__table__.delete().where(ParserError.import_batch_id == existing.id))
@@ -154,6 +195,24 @@ def process_batch(
                 resolved_path = alt_backend
 
     try:
+        # Double check PDF round matching cap_round.round_number before starting extraction
+        try:
+            with open(resolved_path, "rb") as f_check:
+                file_bytes = f_check.read(1024 * 1024)
+                proc_detected_round = detect_pdf_round(file_bytes, batch.filename)
+                if proc_detected_round and proc_detected_round != cap_round.round_number:
+                    batch.status = "FAILED"
+                    batch.completed_at = datetime.now(timezone.utc)
+                    db.commit()
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"CAP Round mismatch! Batch configured for CAP Round {cap_round.round_number}, but PDF is CAP Round {proc_detected_round}. Please upload the correct PDF for CAP Round {cap_round.round_number}."
+                    )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Could not verify PDF round in process_batch: {e}")
+
         importer = PDFImporter(
             db_session=db,
             import_batch_id=batch.id,
@@ -260,36 +319,65 @@ def reset_database(
     Preserves admin_users credentials so admin can continue logging in seamlessly.
     """
     from app.database import engine
-    
-    db_file = Path(__file__).resolve().parent.parent.parent.parent / "cap_portal.db"
+    from app.config import get_settings
+    settings = get_settings()
+
     backup_dir = Path(__file__).resolve().parent.parent.parent.parent / "storage" / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
-    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_file_name = None
-    if db_file.exists():
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_file = backup_dir / f"cap_portal_backup_{timestamp}.db"
-        shutil.copy2(db_file, backup_file)
-        backup_file_name = backup_file.name
-        logger.info(f"Database backed up to {backup_file}")
+
+    # Identify database file(s) to backup and clear
+    root_dir = Path(__file__).resolve().parent.parent.parent.parent
+    target_dbs = []
+    
+    # Check DATABASE_URL
+    if "sqlite" in settings.DATABASE_URL:
+        db_raw = settings.DATABASE_URL.replace("sqlite:///", "").replace("./", "")
+        db_p = Path(db_raw)
+        if not db_p.is_absolute():
+            db_p = root_dir / db_raw
+        if db_p.exists():
+            target_dbs.append(db_p)
+
+    # Always ensure both cutoff.db and cap_portal.db in root are covered
+    for name in ["cutoff.db", "cap_portal.db"]:
+        p = root_dir / name
+        if p.exists() and p not in target_dbs:
+            target_dbs.append(p)
 
     import sqlite3
-    db_path = Path(__file__).resolve().parent.parent.parent.parent / "cap_portal.db"
-    conn = sqlite3.connect(str(db_path), timeout=30.0)
-    cursor = conn.cursor()
-    for tbl in ["cutoffs", "courses", "colleges", "import_batches", "import_logs", "parser_errors", "staging_cutoffs", "cutoff_records", "all_india_cutoff_records"]:
+    for db_path in target_dbs:
         try:
-            cursor.execute(f"DELETE FROM {tbl};")
+            backup_file = backup_dir / f"{db_path.stem}_backup_{timestamp}.db"
+            shutil.copy2(db_path, backup_file)
+            if not backup_file_name:
+                backup_file_name = backup_file.name
+            logger.info(f"Database backed up to {backup_file}")
+
+            conn = sqlite3.connect(str(db_path), timeout=30.0)
+            cursor = conn.cursor()
+            for tbl in [
+                "cutoffs", "courses", "colleges", "import_batches", 
+                "import_logs", "parser_errors", "staging_cutoffs", 
+                "cutoff_records", "all_india_cutoff_records", "manual_corrections"
+            ]:
+                try:
+                    cursor.execute(f"DELETE FROM {tbl};")
+                except Exception as e:
+                    logger.warning(f"Could not clear table {tbl} in {db_path.name}: {e}")
+
+            try:
+                cursor.execute("UPDATE cap_rounds SET total_records = 0, total_pages = 0, processing_status = 'PENDING';")
+            except Exception:
+                pass
+
+            conn.commit()
+            conn.close()
         except Exception as e:
-            logger.warning(f"Could not clear table {tbl}: {e}")
+            logger.error(f"Error resetting database {db_path}: {e}")
 
-    try:
-        cursor.execute("UPDATE cap_rounds SET total_records = 0, total_pages = 0, processing_status = 'PENDING';")
-    except Exception:
-        pass
-
-    conn.commit()
-    conn.close()
+    # Expire and refresh SQLAlchemy session
     db.expire_all()
 
     return {

@@ -45,6 +45,20 @@ export function ImportNewPage() {
   const [showJosaaResetConfirm, setShowJosaaResetConfirm] = useState(false);
   const [parseResult, setParseResult] = useState<ProcessBatchResponse | null>(null);
 
+  // Quick client-side check from filename (e.g. CAP1, CAP_Round_2, etc.)
+  const detectRoundFromFilename = (fileName: string): number | null => {
+    const match = fileName.match(/CAP\s*[-_]?\s*(?:Round\s*[-_]?)?([1-4]|I{1,3}|IV)/i);
+    if (match) {
+      const val = match[1].toUpperCase();
+      const map: Record<string, number> = { '1': 1, '2': 2, '3': 3, '4': 4, 'I': 1, 'II': 2, 'III': 3, 'IV': 4 };
+      return map[val] ?? null;
+    }
+    return null;
+  };
+
+  const detectedFileRound = file ? detectRoundFromFilename(file.name) : null;
+  const isRoundMismatch = detectedFileRound !== null && detectedFileRound !== round;
+
   // Poll real-time progress during PDF extraction
   const { data: batchProgress } = useQuery({
     queryKey: ['importProgress', batchId],
@@ -335,7 +349,7 @@ export function ImportNewPage() {
             <div className="text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
               <p className="font-semibold text-amber-900">Important Notes:</p>
               <p>1. Only the independent <span className="font-mono">josaa.db</span> file will be wiped.</p>
-              <p>2. Your MHT-CET database (<span className="font-mono">cap_portal.db</span>) and admin credentials remain completely untouched.</p>
+              <p>2. Your MHT-CET database (<span className="font-mono">cutoff.db</span>) and admin credentials remain completely untouched.</p>
               <p>3. You can click "Reload Official Registry" anytime to restore the 46+ institutes and seed cutoffs.</p>
             </div>
             <div className="flex justify-end gap-2 pt-2">
@@ -483,11 +497,29 @@ export function ImportNewPage() {
             <FileDropzone onFileSelect={setFile} />
           </div>
 
+          {/* CAP Round Mismatch Warning */}
+          {isRoundMismatch && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3.5 flex items-start gap-3 text-red-800">
+              <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="text-xs space-y-1">
+                <p className="font-semibold text-red-900">
+                  CAP Round Mismatch Detected!
+                </p>
+                <p>
+                  You have selected <span className="font-bold">CAP Round {round}</span> from the dropdown, but the selected file is named for <span className="font-bold">CAP Round {detectedFileRound}</span>.
+                </p>
+                <p className="text-red-700 font-medium">
+                  Please change the dropdown to <strong>CAP Round {detectedFileRound}</strong> or select the correct PDF file to prevent uploading data into the wrong round column.
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end pt-2">
             <Button
               onClick={() => uploadMutation.mutate()}
               isLoading={uploadMutation.isPending}
-              disabled={!file}
+              disabled={!file || isRoundMismatch}
               size="lg"
               className="bg-primary-600 hover:bg-primary-700 text-white font-medium"
             >
