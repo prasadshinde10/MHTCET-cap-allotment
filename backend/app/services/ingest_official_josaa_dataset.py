@@ -148,11 +148,15 @@ def ingest_all_official_rounds(year: int = 2025):
                 if len(row) < 7:
                     continue
 
-                inst_name = row[0].strip()
-                prog_name = row[1].strip()
-                quota = row[2].strip().upper()
-                cat_code = row[3].strip()
-                gender = row[4].strip()
+                inst_name = ' '.join(row[0].split())
+                prog_name = ' '.join(row[1].split())
+                quota = ' '.join(row[2].split()).upper()
+                cat_code = ' '.join(row[3].split())
+                gender = ' '.join(row[4].split())
+
+                if not inst_name or not prog_name or not cat_code:
+                    continue
+
                 open_rank, open_prep = parse_rank(row[5])
                 close_rank, close_prep = parse_rank(row[6])
                 is_prep = open_prep or close_prep

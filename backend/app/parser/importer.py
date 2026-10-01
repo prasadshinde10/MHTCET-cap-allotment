@@ -91,6 +91,30 @@ def parse_reservation_level(quota_type: Optional[str], category_code: str) -> st
     return "State Level"
 
 
+def normalize_stage(stage_raw: str, cat_code: str = "") -> str:
+    """Normalizes stage strings, correcting minor PDF word wrapping artifacts."""
+    if not stage_raw:
+        return "I"
+    s = stage_raw.replace("\n", " ").strip()
+    s_upper = s.upper().replace(" ", "").replace("-", "")
+    if s_upper in ("I", "STAGEI", "STAGE1"):
+        return "I"
+    if s_upper in ("II", "STAGEII", "STAGE2"):
+        return "II"
+    if s_upper in ("VII", "STAGEVII", "STAGE7", "VIIVII"):
+        return "VII"
+    cat_upper = (cat_code or "").upper()
+    if "NONDEFENCE" in s_upper or "NONDEF" in s_upper or (s_upper in ("INON", "STAGEINON") and "DEF" in cat_upper):
+        return "I-NonDefence"
+    if "NONPWD" in s_upper or (s_upper in ("INON", "STAGEINON") and "PWD" in cat_upper):
+        return "I-NonPWD"
+    if s_upper in ("MH", "AGAINSTMI", "AGAINSTCAP"):
+        return "MH"
+    if s_upper == "AI":
+        return "AI"
+    return s.replace(" ", "")
+
+
 def extract_district(college_name: str) -> str:
     """Extracts known district or city from college name."""
     districts = [
@@ -561,12 +585,15 @@ class PDFImporter:
                         prev_table_bottom = tab_bottom
                         continue
 
-                    categories = header[1:]
+                    categories = [c.replace("\n", "").strip() for c in header[1:]]
 
                     for row in df[1:]:
-                        stage_str = row[0].replace("\n", "").strip() if row[0] else "Stage-I"
+                        raw_stage = row[0].replace("\n", " ").strip() if row[0] else "I"
                         cell_values = row[1:]
                         for cat, cell in zip(categories, cell_values):
+                            cat_clean = cat.replace("\n", "").strip()
+                            if not cat_clean or len(cat_clean) < 2:
+                                continue
                             cell_clean = cell.strip() if cell else ""
                             if not cell_clean:
                                 continue
@@ -575,13 +602,15 @@ class PDFImporter:
                             perc_str = parts[1].strip() if len(parts) >= 2 else ""
                             perc_str = perc_str.replace("(", "").replace(")", "").strip()
 
+                            stage_str = normalize_stage(raw_stage, cat_clean)
+
                             try:
                                 rank = int(rank_str)
                                 perc = float(perc_str) if perc_str else None
-                                seat_category = parse_category_meta(cat)
-                                reservation_level = parse_reservation_level(quota_title, cat)
+                                seat_category = parse_category_meta(cat_clean)
+                                reservation_level = parse_reservation_level(quota_title, cat_clean)
 
-                                gender = "Ladies" if cat.upper().startswith("L") else "General"
+                                gender = "Ladies" if cat_clean.upper().startswith("L") else "General"
 
                                 cutoff_entry = Cutoff(
                                     year=self.year,
@@ -590,7 +619,7 @@ class PDFImporter:
                                     import_batch_id=self.batch_id,
                                     seat_section=quota_title or reservation_level or "State Level",
                                     seat_section_raw=quota_title,
-                                    category_code=cat,
+                                    category_code=cat_clean,
                                     gender=gender,
                                     seat_category=seat_category,
                                     seat_location=reservation_level,

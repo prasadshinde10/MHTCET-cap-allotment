@@ -219,18 +219,48 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           {/* Quick action info bar for multi-select */}
           {multiple && (
             <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 flex items-center justify-between text-xs text-gray-500">
-              <span className="font-medium">
-                {values.length === 0 ? 'Select options with checkboxes' : `${values.length} selected`}
+              <span className="font-semibold text-gray-700">
+                {values.length === 0 ? 'Select options with checkboxes' : `${values.length} Selected`}
               </span>
               {values.length > 0 && (
                 <button
                   type="button"
                   onClick={() => onMultiChange?.([])}
-                  className="text-primary-600 hover:text-primary-700 font-medium hover:underline text-xs"
+                  className="text-red-600 hover:text-red-700 font-medium hover:underline text-xs"
                 >
-                  Clear all
+                  Uncheck All ({values.length})
                 </button>
               )}
+            </div>
+          )}
+
+          {/* Quick-uncheck pills inside popover */}
+          {multiple && selectedMultiOptions.length > 0 && (
+            <div className="p-2 bg-indigo-50/50 border-b border-indigo-100 max-h-24 overflow-y-auto">
+              <div className="text-[10px] font-bold text-indigo-900 uppercase tracking-wider mb-1 px-0.5">
+                Active Selections (Click × to uncheck):
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {selectedMultiOptions.map((opt) => (
+                  <span
+                    key={opt.value}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-white text-indigo-950 border border-indigo-200 shadow-2xs"
+                  >
+                    <span className="truncate max-w-[200px]" title={opt.label}>{opt.label}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleMulti(opt.value);
+                      }}
+                      className="text-gray-400 hover:text-red-600 p-0.5 rounded-full"
+                      title={`Uncheck ${opt.label}`}
+                    >
+                      <X className="w-3 h-3 stroke-[2.5]" />
+                    </button>
+                  </span>
+                ))}
+              </div>
             </div>
           )}
 
@@ -321,6 +351,33 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
               })
             )}
           </div>
+        </div>
+      )}
+
+      {/* Selected badges for multi-select (visible directly below trigger with uncheck button) */}
+      {multiple && values.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {selectedMultiOptions.map((opt) => (
+            <span
+              key={opt.value}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-slate-100 text-slate-800 border border-slate-300 shadow-2xs hover:bg-slate-200/70 transition-colors"
+            >
+              <span className="truncate max-w-[280px]" title={opt.label}>
+                {opt.label}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleToggleMulti(opt.value);
+                }}
+                className="text-slate-400 hover:text-red-600 rounded-full p-0.5 hover:bg-white/80 transition-colors"
+                title={`Remove / Uncheck ${opt.label}`}
+              >
+                <X className="w-3.5 h-3.5 stroke-[2.5]" />
+              </button>
+            </span>
+          ))}
         </div>
       )}
 

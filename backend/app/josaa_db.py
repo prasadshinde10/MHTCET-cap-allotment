@@ -133,16 +133,21 @@ def query_josaa_cutoffs(
             where_clauses.append("cr.institute_id = ?")
             params.append(institute_id)
         elif institute_name:
-            # Handle comma separated or single
-            names = [n.strip() for n in institute_name.split(",") if n.strip()]
+            # Check for '||' delimiter first (safe for names containing commas)
+            if "||" in institute_name:
+                names = [n.strip() for n in institute_name.split("||") if n.strip()]
+            else:
+                names = [institute_name.strip()]
+
             if len(names) == 1:
-                where_clauses.append("i.institute_name LIKE ?")
-                params.append(f"%{names[0]}%")
+                where_clauses.append("(i.institute_name = ? OR i.institute_name LIKE ?)")
+                params.extend([names[0], f"%{names[0]}%"])
             elif len(names) > 1:
-                placeholders = " OR ".join(["i.institute_name LIKE ?" for _ in names])
-                where_clauses.append(f"({placeholders})")
+                clause_parts = []
                 for n in names:
-                    params.append(f"%{n}%")
+                    clause_parts.append("(i.institute_name = ? OR i.institute_name LIKE ?)")
+                    params.extend([n, f"%{n}%"])
+                where_clauses.append(f"({' OR '.join(clause_parts)})")
 
         if institute_type:
             types = [t.strip() for t in institute_type.split(",") if t.strip()]
@@ -158,15 +163,21 @@ def query_josaa_cutoffs(
             where_clauses.append("cr.program_id = ?")
             params.append(program_id)
         elif academic_program:
-            programs = [p.strip() for p in academic_program.split(",") if p.strip()]
+            # Check for '||' delimiter first (safe for program names containing commas)
+            if "||" in academic_program:
+                programs = [p.strip() for p in academic_program.split("||") if p.strip()]
+            else:
+                programs = [academic_program.strip()]
+
             if len(programs) == 1:
-                where_clauses.append("p.program_name LIKE ?")
-                params.append(f"%{programs[0]}%")
+                where_clauses.append("(p.program_name = ? OR p.program_name LIKE ?)")
+                params.extend([programs[0], f"%{programs[0]}%"])
             elif len(programs) > 1:
-                placeholders = " OR ".join(["p.program_name LIKE ?" for _ in programs])
-                where_clauses.append(f"({placeholders})")
+                clause_parts = []
                 for p in programs:
-                    params.append(f"%{p}%")
+                    clause_parts.append("(p.program_name = ? OR p.program_name LIKE ?)")
+                    params.extend([p, f"%{p}%"])
+                where_clauses.append(f"({' OR '.join(clause_parts)})")
 
         if category:
             cats = [c.strip() for c in category.split(",") if c.strip()]

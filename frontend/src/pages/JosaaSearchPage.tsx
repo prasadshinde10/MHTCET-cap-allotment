@@ -12,7 +12,7 @@ import {
   Download, LayoutGrid, Table as TableIcon,
   Award, CheckCircle2, ChevronRight, SlidersHorizontal,
   ExternalLink, ArrowUpDown, Filter, Sparkles,
-  Trash2, RefreshCw, AlertTriangle
+  Trash2, RefreshCw, AlertTriangle, Globe
 } from 'lucide-react';
 import SearchableSelect, { SearchableOption } from '../components/ui/SearchableSelect';
 import Select from '../components/ui/Select';
@@ -22,12 +22,66 @@ import Badge from '../components/ui/Badge';
 import Spinner from '../components/ui/Spinner';
 import toast from 'react-hot-toast';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { resetJosaaDatabase, reloadJosaaData } from '../api/josaa';
+import { 
+  resetJosaaDatabase, 
+  reloadJosaaData, 
+  scrapeJosaaData, 
+  getJosaaScraperStatus,
+  JosaaScraperStatus 
+} from '../api/josaa';
 
 export const JosaaSearchPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [showWipeModal, setShowWipeModal] = useState(false);
+  const [showScraperModal, setShowScraperModal] = useState(false);
+  const [pollScraper, setPollScraper] = useState(false);
+
+  // Background Scraper Status Query with automatic 1-second polling while running
+  const { data: scraperStatus } = useQuery<JosaaScraperStatus>({
+    queryKey: ['josaaScraperStatus'],
+    queryFn: getJosaaScraperStatus,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      return (data?.is_running || pollScraper) ? 1000 : false;
+    },
+  });
+
+  // Automatically refresh filters and cutoffs when scraping completes
+  const prevRunningRef = React.useRef(false);
+  useEffect(() => {
+    if (scraperStatus) {
+      if (prevRunningRef.current && !scraperStatus.is_running) {
+        setPollScraper(false);
+        if (scraperStatus.status === 'COMPLETED') {
+          toast.success('JoSAA cutoffs for Years 2024 & 2025 scraped and ingested successfully!');
+          queryClient.invalidateQueries({ queryKey: ['josaaFilterOptions'] });
+          queryClient.invalidateQueries({ queryKey: ['josaaCutoffs'] });
+          queryClient.invalidateQueries({ queryKey: ['josaaStats'] });
+        } else if (scraperStatus.status === 'FAILED') {
+          toast.error(`JoSAA scraping failed: ${scraperStatus.error || 'Check server connection'}`);
+        }
+      }
+      prevRunningRef.current = scraperStatus.is_running;
+    }
+  }, [scraperStatus, queryClient]);
+
+  const scraperMutation = useMutation({
+    mutationFn: scrapeJosaaData,
+    onSuccess: (data) => {
+      if (data.success) {
+        toast.success(data.message || 'JoSAA scraper started in background!');
+        setShowScraperModal(true);
+        setPollScraper(true);
+        queryClient.invalidateQueries({ queryKey: ['josaaScraperStatus'] });
+      } else {
+        toast.error(data.message);
+      }
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || err.message || 'Failed to start JoSAA scraper');
+    }
+  });
 
   const wipeMutation = useMutation({
     mutationFn: resetJosaaDatabase,
@@ -44,28 +98,35 @@ export const JosaaSearchPage: React.FC = () => {
   });
 
   const reloadMutation = useMutation({
-    mutationFn: reloadJosaaData,
+    mutationFn: scrapeJosaaData,
     onSuccess: (data) => {
-      toast.success(data.message || 'JoSAA data restored successfully!');
-      queryClient.invalidateQueries({ queryKey: ['josaaFilterOptions'] });
-      queryClient.invalidateQueries({ queryKey: ['josaaCutoffs'] });
-      queryClient.invalidateQueries({ queryKey: ['josaaStats'] });
+      toast.success(data.message || 'JoSAA web scraping started!');
+      setShowScraperModal(true);
+      setPollScraper(true);
+      queryClient.invalidateQueries({ queryKey: ['josaaScraperStatus'] });
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.detail || err.message || 'Failed to reload JoSAA data');
+      toast.error(err.response?.data?.detail || err.message || 'Failed to start JoSAA scraper');
     }
   });
+
+  // Helper to parse multi-value parameters safely without breaking names with commas
+  const parseMultiParam = (param: string | null): string[] => {
+    if (!param) return [];
+    if (param.includes('||')) {
+      return param.split('||').map((s) => s.trim()).filter(Boolean);
+    }
+    return [param.trim()].filter(Boolean);
+  };
 
   // Filter states
   const [roundNo, setRoundNo] = useState<string>(searchParams.get('round') || '');
   const [instituteType, setInstituteType] = useState<string>(searchParams.get('type') || '');
   const [selectedInstitutes, setSelectedInstitutes] = useState<string[]>(() => {
-    const p = searchParams.get('institute');
-    return p ? p.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    return parseMultiParam(searchParams.get('institute'));
   });
   const [selectedPrograms, setSelectedPrograms] = useState<string[]>(() => {
-    const p = searchParams.get('program');
-    return p ? p.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    return parseMultiParam(searchParams.get('program'));
   });
   const [category, setCategory] = useState<string>(searchParams.get('category') || '');
   const [quota, setQuota] = useState<string>(searchParams.get('quota') || '');
@@ -74,7 +135,7 @@ export const JosaaSearchPage: React.FC = () => {
   const [candidateRank, setCandidateRank] = useState<string>(searchParams.get('rank') || '');
 
   // UI state
-  const [hasSearched, setHasSearched] = useState(false);
+  const [hasSearched, setHasSearched] = useState(true);
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [sortBy, setSortBy] = useState<'rank_asc' | 'rank_desc' | 'opening_rank_asc' | 'institute' | 'program'>('rank_asc');
   const [page, setPage] = useState<number>(1);
@@ -96,8 +157,8 @@ export const JosaaSearchPage: React.FC = () => {
     if (hasAny) {
       if (roundParam !== null) setRoundNo(roundParam);
       if (typeParam !== null) setInstituteType(typeParam);
-      if (instParam !== null) setSelectedInstitutes(instParam ? instParam.split(',').map((s) => s.trim()).filter(Boolean) : []);
-      if (progParam !== null) setSelectedPrograms(progParam ? progParam.split(',').map((s) => s.trim()).filter(Boolean) : []);
+      if (instParam !== null) setSelectedInstitutes(parseMultiParam(instParam));
+      if (progParam !== null) setSelectedPrograms(parseMultiParam(progParam));
       if (catParam !== null) setCategory(catParam);
       if (quotaParam !== null) setQuota(quotaParam);
       if (genParam !== null) setGender(genParam);
@@ -224,8 +285,8 @@ export const JosaaSearchPage: React.FC = () => {
   const queryParams = useMemo(() => ({
     round_no: roundNo ? Number(roundNo) : undefined,
     institute_type: instituteType || undefined,
-    institute_name: selectedInstitutes.length > 0 ? selectedInstitutes.join(',') : undefined,
-    academic_program: selectedPrograms.length > 0 ? selectedPrograms.join(',') : undefined,
+    institute_name: selectedInstitutes.length > 0 ? selectedInstitutes.join('||') : undefined,
+    academic_program: selectedPrograms.length > 0 ? selectedPrograms.join('||') : undefined,
     category: category || undefined,
     quota: quota || undefined,
     gender: gender || undefined,
@@ -250,8 +311,8 @@ export const JosaaSearchPage: React.FC = () => {
     const params = new URLSearchParams();
     if (roundNo) params.set('round', roundNo);
     if (instituteType) params.set('type', instituteType);
-    if (selectedInstitutes.length > 0) params.set('institute', selectedInstitutes.join(','));
-    if (selectedPrograms.length > 0) params.set('program', selectedPrograms.join(','));
+    if (selectedInstitutes.length > 0) params.set('institute', selectedInstitutes.join('||'));
+    if (selectedPrograms.length > 0) params.set('program', selectedPrograms.join('||'));
     if (category) params.set('category', category);
     if (quota) params.set('quota', quota);
     if (gender) params.set('gender', gender);
@@ -271,31 +332,34 @@ export const JosaaSearchPage: React.FC = () => {
     setQuota('');
     setGender('');
     setCandidateRank('');
-    setHasSearched(false);
+    setHasSearched(true);
     setPage(1);
     setSearchParams(new URLSearchParams());
     toast.success('Filters reset');
   };
 
-  // Active filter chips
+  // Active filter chips (each selected institute and program has its own individual removable chip)
   const activeFilterChips: ActiveFilter[] = useMemo(() => {
     const chips: ActiveFilter[] = [];
     if (roundNo) chips.push({ id: 'round', label: 'Round', value: `Round ${roundNo}` });
     if (instituteType) chips.push({ id: 'type', label: 'Type', value: instituteType });
-    if (selectedInstitutes.length > 0) {
+    
+    selectedInstitutes.forEach((inst) => {
       chips.push({
-        id: 'institute',
+        id: `institute:${inst}`,
         label: 'Institute',
-        value: selectedInstitutes.length === 1 ? selectedInstitutes[0] : `${selectedInstitutes.length} Institutes`,
+        value: inst,
       });
-    }
-    if (selectedPrograms.length > 0) {
+    });
+
+    selectedPrograms.forEach((prog) => {
       chips.push({
-        id: 'program',
+        id: `program:${prog}`,
         label: 'Program',
-        value: selectedPrograms.length === 1 ? selectedPrograms[0] : `${selectedPrograms.length} Programs`,
+        value: prog,
       });
-    }
+    });
+
     if (category) chips.push({ id: 'category', label: 'Category', value: category });
     if (quota) chips.push({ id: 'quota', label: 'Quota', value: quota });
     if (gender) chips.push({ id: 'gender', label: 'Pool', value: gender });
@@ -306,8 +370,16 @@ export const JosaaSearchPage: React.FC = () => {
   const removeFilterChip = (id: string) => {
     if (id === 'round') setRoundNo('');
     if (id === 'type') setInstituteType('');
-    if (id === 'institute') setSelectedInstitutes([]);
-    if (id === 'program') setSelectedPrograms([]);
+    if (id.startsWith('institute:')) {
+      const val = id.substring('institute:'.length);
+      setSelectedInstitutes((prev) => prev.filter((item) => item !== val));
+      return;
+    }
+    if (id.startsWith('program:')) {
+      const val = id.substring('program:'.length);
+      setSelectedPrograms((prev) => prev.filter((item) => item !== val));
+      return;
+    }
     if (id === 'category') setCategory('');
     if (id === 'quota') setQuota('');
     if (id === 'gender') setGender('');
@@ -361,16 +433,34 @@ export const JosaaSearchPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Live Scraper Progress Pill */}
+            {scraperStatus?.is_running && (
+              <button
+                onClick={() => setShowScraperModal(true)}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/20 border border-indigo-500/40 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/30 transition-all animate-pulse"
+                title="Click to view live scraping progress"
+              >
+                <Spinner className="w-3.5 h-3.5" />
+                <span>Scraping 2024 & 2025 ({scraperStatus.progress_percent}%)</span>
+              </button>
+            )}
+
             <Button
-              variant="outline"
+              variant="primary"
               size="sm"
-              onClick={() => reloadMutation.mutate()}
-              disabled={reloadMutation.isPending}
-              className="text-xs text-indigo-300 border-indigo-700/60 hover:bg-indigo-950/60"
-              title="Restore official institutes registry and sample cutoffs"
+              onClick={() => {
+                if (scraperStatus?.is_running) {
+                  setShowScraperModal(true);
+                } else {
+                  scraperMutation.mutate();
+                }
+              }}
+              disabled={scraperMutation.isPending}
+              className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-sm shadow-indigo-900/30"
+              title="Scrape complete official cutoffs for Years 2024 & 2025 across all rounds"
             >
-              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${reloadMutation.isPending ? 'animate-spin' : ''}`} />
-              Restore Data
+              <Globe className={`w-3.5 h-3.5 mr-1.5 ${scraperStatus?.is_running ? 'animate-spin' : ''}`} />
+              {scraperStatus?.is_running ? 'View Scraper Progress' : 'Web Scrape JoSAA (2024 & 2025)'}
             </Button>
 
             <Button
@@ -386,6 +476,162 @@ export const JosaaSearchPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* JoSAA Scraping Progress Modal */}
+      {showScraperModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-xl w-full p-6 space-y-5 text-white">
+            {/* Header */}
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center flex-shrink-0 text-indigo-400">
+                  <Globe className={`w-5 h-5 ${scraperStatus?.is_running ? 'animate-spin' : ''}`} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-100 flex items-center gap-2">
+                    JoSAA Multi-Year Web Scraper
+                    {scraperStatus?.is_running && (
+                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 animate-pulse">
+                        Live Scraping
+                      </span>
+                    )}
+                    {scraperStatus?.status === 'COMPLETED' && (
+                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                        Completed
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Extracting complete Opening & Closing Ranks across all 5 rounds for 2024 & 2025.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowScraperModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Progress Bar Component */}
+            <div className="space-y-2 bg-slate-950/70 border border-slate-800 rounded-xl p-4">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-300 flex items-center gap-2">
+                  {scraperStatus?.is_running && <Spinner className="w-3.5 h-3.5" />}
+                  {scraperStatus?.current_year ? `Year ${scraperStatus.current_year} • Round ${scraperStatus.current_round} of 5` : 'Scraping Progress'}
+                </span>
+                <span className="font-mono font-bold text-indigo-400 text-sm">
+                  {scraperStatus?.progress_percent ?? 0}%
+                </span>
+              </div>
+
+              {/* Outer Bar */}
+              <div className="w-full bg-slate-800 h-3.5 rounded-full overflow-hidden p-0.5 border border-slate-700/60">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    scraperStatus?.status === 'COMPLETED'
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                      : scraperStatus?.status === 'FAILED'
+                      ? 'bg-red-500'
+                      : 'bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400'
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(2, scraperStatus?.progress_percent ?? 0))}%` }}
+                />
+              </div>
+
+              {/* Current status message */}
+              <p className="text-xs text-slate-400 pt-1 flex items-center gap-1.5">
+                <span className="text-indigo-400 font-medium">Activity:</span>
+                <span>{scraperStatus?.message || 'Connecting to official portals...'}</span>
+              </p>
+            </div>
+
+            {/* Real-time Metric Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-3 text-center">
+                <div className="text-[11px] text-slate-400 font-medium">Completed Rounds</div>
+                <div className="text-base font-bold text-slate-100 mt-0.5">
+                  {scraperStatus?.completed_rounds ?? 0} / 10
+                </div>
+              </div>
+
+              <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-3 text-center">
+                <div className="text-[11px] text-slate-400 font-medium">Year 2024 Records</div>
+                <div className="text-base font-bold text-indigo-300 mt-0.5">
+                  {scraperStatus?.records_2024?.toLocaleString() ?? 0}
+                </div>
+              </div>
+
+              <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-3 text-center">
+                <div className="text-[11px] text-slate-400 font-medium">Year 2025 Records</div>
+                <div className="text-base font-bold text-purple-300 mt-0.5">
+                  {scraperStatus?.records_2025?.toLocaleString() ?? 0}
+                </div>
+              </div>
+
+              <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-3 text-center">
+                <div className="text-[11px] text-slate-400 font-medium">Total Cutoffs</div>
+                <div className="text-base font-bold text-emerald-400 mt-0.5">
+                  {scraperStatus?.total_records?.toLocaleString() ?? 0}
+                </div>
+              </div>
+            </div>
+
+            {/* Completion or Error Banners */}
+            {scraperStatus?.status === 'COMPLETED' && (
+              <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-3 text-xs text-emerald-300 flex items-center gap-2.5">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-emerald-200">Scraping Completed Successfully!</p>
+                  <p className="text-emerald-300/80">Both 2024 and 2025 cutoffs are ingested, deduplicated, and ready for exploration.</p>
+                </div>
+              </div>
+            )}
+
+            {scraperStatus?.status === 'FAILED' && (
+              <div className="bg-red-950/40 border border-red-500/40 rounded-xl p-3 text-xs text-red-300 flex items-center gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-red-200">Scraper encountered an error:</p>
+                  <p className="text-red-300/80">{scraperStatus?.error || 'Network timeout or connection error.'}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Action Footer */}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+              <div className="text-[11px] text-slate-400">
+                {scraperStatus?.is_running ? 'You can safely close this modal; scraping continues in the background.' : 'Ready to search and filter.'}
+              </div>
+              <div className="flex items-center gap-2">
+                {scraperStatus?.status === 'COMPLETED' && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      setShowScraperModal(false);
+                      queryClient.invalidateQueries({ queryKey: ['josaaFilterOptions'] });
+                      queryClient.invalidateQueries({ queryKey: ['josaaCutoffs'] });
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
+                  >
+                    Explore Cutoffs Now
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowScraperModal(false)}
+                  className="text-xs text-slate-300 border-slate-700 hover:bg-slate-800"
+                >
+                  {scraperStatus?.is_running ? 'Run in Background' : 'Close'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Wipe Confirmation Modal */}
       {showWipeModal && (
@@ -404,7 +650,7 @@ export const JosaaSearchPage: React.FC = () => {
               <p className="font-semibold text-amber-900">Important Notes:</p>
               <p>1. Only the independent <span className="font-mono">josaa.db</span> file will be cleared.</p>
               <p>2. Your MHT-CET database and admin account remain completely unaffected.</p>
-              <p>3. You can click "Restore Data" anytime to reload the official institute registry and cutoffs.</p>
+              <p>3. You can click "Web Scrape JoSAA" anytime to scrape and reload official cutoffs for Years 2024 and 2025.</p>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button
@@ -426,6 +672,89 @@ export const JosaaSearchPage: React.FC = () => {
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Inline Scraping Progress Banner (Always visible while scraping is active) */}
+      {scraperStatus?.is_running && (
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 rounded-xl p-4 shadow-lg text-white space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 flex-shrink-0">
+                <Globe className="w-5 h-5 animate-spin" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-slate-100">Live Official Web Scraping Active</span>
+                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 animate-pulse">
+                    {scraperStatus.current_year ? `Year ${scraperStatus.current_year} • Round ${scraperStatus.current_round} of 5` : 'Processing'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  {scraperStatus.message || 'Connecting to official portals...'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 self-end sm:self-center">
+              <div className="text-right">
+                <span className="font-mono font-bold text-indigo-400 text-base">
+                  {scraperStatus.progress_percent}%
+                </span>
+                <div className="text-[10px] text-slate-400">
+                  {scraperStatus.completed_rounds} / 10 rounds completed
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowScraperModal(true)}
+                className="text-xs border-indigo-500/40 text-indigo-300 hover:bg-indigo-950/60"
+              >
+                View Details
+              </Button>
+            </div>
+          </div>
+
+          {/* Progress Bar Track */}
+          <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-700/60">
+            <div
+              className="h-full rounded-full transition-all duration-500 bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400"
+              style={{ width: `${Math.max(3, scraperStatus.progress_percent)}%` }}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 pt-0.5">
+            <span>Year 2024 Scraped: <strong className="text-indigo-300 font-semibold">{scraperStatus.records_2024.toLocaleString()}</strong> cutoffs</span>
+            <span>Year 2025 Scraped: <strong className="text-purple-300 font-semibold">{scraperStatus.records_2025.toLocaleString()}</strong> cutoffs</span>
+            <span>Total Ingested: <strong className="text-emerald-400 font-semibold">{scraperStatus.total_records.toLocaleString()}</strong> cutoffs</span>
+          </div>
+        </div>
+      )}
+
+      {/* Empty Database Callout Banner */}
+      {!scraperStatus?.is_running && (!filterOptions?.institutes || filterOptions.institutes.length === 0) && (
+        <div className="bg-amber-950/30 border border-amber-500/40 rounded-xl p-5 text-amber-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center flex-shrink-0 text-amber-400">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm text-amber-100">JoSAA Database is Empty</h4>
+              <p className="text-xs text-amber-300/80 mt-0.5">
+                No cutoff records found. Run the official web scraper to scrape and populate cutoffs for both 2024 and 2025 with live progress tracking.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => scraperMutation.mutate()}
+            disabled={scraperMutation.isPending}
+            className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs whitespace-nowrap shadow-sm"
+          >
+            <Globe className="w-3.5 h-3.5 mr-1.5" />
+            Start Web Scraper (2024 & 2025)
+          </Button>
         </div>
       )}
 
@@ -588,6 +917,7 @@ export const JosaaSearchPage: React.FC = () => {
               options={
                 filterOptions?.years?.map((y) => ({ value: String(y), label: `${y} Cutoffs` })) || [
                   { value: '2025', label: '2025 Cutoffs' },
+                  { value: '2024', label: '2024 Cutoffs' },
                 ]
               }
             />

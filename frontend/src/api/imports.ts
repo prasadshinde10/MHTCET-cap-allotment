@@ -24,6 +24,23 @@ export interface DbStatus {
   total_colleges: number;
   total_courses: number;
   total_batches: number;
+  total_institutes?: number;
+  total_institute_courses?: number;
+}
+
+export interface ScraperProgressResponse {
+  is_running: boolean;
+  status: 'IDLE' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  current: number;
+  total: number;
+  progress_percent: number;
+  current_institute: string;
+  institutes_created: number;
+  courses_created: number;
+  message: string;
+  error?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
 }
 
 export interface ResetDbResponse {
@@ -61,6 +78,11 @@ export const resetDatabase = async (): Promise<ResetDbResponse> => {
   return response.data;
 };
 
+export const restoreOfficialCutoffs = async (): Promise<{ success: boolean; message: string; total_cutoffs: number }> => {
+  const response = await apiClient.post<{ success: boolean; message: string; total_cutoffs: number }>('/imports/restore-cutoffs');
+  return response.data;
+};
+
 export const getImportBatches = async (params?: {
   page?: number;
   page_size?: number;
@@ -94,3 +116,14 @@ export const deleteBatch = async (batchId: number): Promise<{ message: string }>
   const response = await apiClient.delete<{ message: string }>(`/imports/${batchId}`);
   return response.data;
 };
+
+export const startInstituteScraper = async (): Promise<{ status: string; message: string }> => {
+  const response = await apiClient.post<{ status: string; message: string }>('/imports/scrape-institutes');
+  return response.data;
+};
+
+export const getInstituteScraperProgress = async (): Promise<ScraperProgressResponse> => {
+  const response = await apiClient.get<ScraperProgressResponse>('/imports/scrape-institutes/status');
+  return response.data;
+};
+

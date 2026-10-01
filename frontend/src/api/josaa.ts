@@ -123,6 +123,28 @@ export const reloadJosaaData = async (): Promise<{ success: boolean; message: st
   return response.data;
 };
 
+export interface JosaaScraperStatus {
+  is_running: boolean;
+  status: 'IDLE' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  progress_percent: number;
+  current_year: number | null;
+  current_round: number | null;
+  message: string;
+  records_2024: number;
+  records_2025: number;
+  total_records: number;
+  total_rounds: number;
+  completed_rounds: number;
+  started_at: string | null;
+  completed_at: string | null;
+  error?: string | null;
+}
+
+export const getJosaaScraperStatus = async (): Promise<JosaaScraperStatus> => {
+  const response = await apiClient.get<JosaaScraperStatus>('/josaa/scraper-status');
+  return response.data;
+};
+
 export const scrapeJosaaData = async (): Promise<{ success: boolean; message: string }> => {
   const response = await apiClient.post<{ success: boolean; message: string }>('/josaa/scrape');
   return response.data;

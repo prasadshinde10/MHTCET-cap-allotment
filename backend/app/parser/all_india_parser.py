@@ -151,11 +151,17 @@ def parse_page_words(
 def parse_all_india_pdf(pdf_path: str) -> List[Dict[str, Any]]:
     filename = os.path.basename(pdf_path)
     cap_round = 1
-    match = re.search(r'CAP\s*(\d+)', filename, re.IGNORECASE)
-    if match:
-        cap_round = int(match.group(1))
-
     doc = pymupdf.open(pdf_path)
+
+    # Detect CAP round directly from PDF page text
+    _ROMAN_MAP = {'I': 1, 'II': 2, 'III': 3, 'IV': 4, '1': 1, '2': 2, '3': 3, '4': 4}
+    for page_idx in range(min(5, len(doc))):
+        match = re.search(r'CAP\s*[-_]?\s*Round\s*[-–—:]*\s*([IVXivx\d]+)', doc[page_idx].get_text(), re.IGNORECASE)
+        if match:
+            val = match.group(1).upper()
+            if val in _ROMAN_MAP:
+                cap_round = _ROMAN_MAP[val]
+                break
     all_records = []
     for page_idx in range(len(doc)):
         page = doc[page_idx]

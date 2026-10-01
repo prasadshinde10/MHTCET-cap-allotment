@@ -166,30 +166,52 @@ def reset_josaa_database_endpoint():
 @router.post("/reload-data")
 def reload_josaa_data_endpoint():
     """
-    Re-seeds official institutes and complete cutoffs into josaa.db.
+    Re-seeds official institutes and complete cutoffs into josaa.db for both 2024 & 2025.
     """
-    from app.josaa_db import reload_sample_josaa_data
+    from app.services.scrape_josaa_official import start_josaa_scraper_background
     try:
-        res = reload_sample_josaa_data()
-        if not res.get("success"):
-            raise HTTPException(status_code=400, detail=res.get("message"))
-        return res
-    except HTTPException:
-        raise
+        started = start_josaa_scraper_background()
+        if not started:
+            return {
+                "success": True,
+                "message": "JoSAA multi-year web scraper is already actively running in the background."
+            }
+        return {
+            "success": True,
+            "message": "JoSAA multi-year web scraper started in background for Years 2024 and 2025 across all rounds."
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to reload JoSAA data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start JoSAA scraper: {str(e)}")
 
 @router.post("/scrape")
 def trigger_josaa_scraper_endpoint():
     """
-    Triggers on-demand ingestion and scraping of official JoSAA cutoffs across all 5 rounds.
+    Triggers multi-year background scraping of official JoSAA cutoffs across all 5 rounds
+    for both Year 2024 (official archive) and Year 2025 (official dataset).
     """
-    from app.services.ingest_official_josaa_dataset import ingest_all_official_rounds
+    from app.services.scrape_josaa_official import start_josaa_scraper_background
     try:
-        res = ingest_all_official_rounds(year=2025)
-        if isinstance(res, dict) and res.get("success"):
-            return res
-        return {"success": True, "message": "JoSAA official cutoffs scraped and synced successfully."}
+        started = start_josaa_scraper_background()
+        if not started:
+            return {
+                "success": False,
+                "message": "JoSAA scraper is already actively running in the background."
+            }
+        return {
+            "success": True,
+            "message": "JoSAA scraper started in background for Years 2024 and 2025 across all rounds."
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to scrape JoSAA data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start JoSAA scraper: {str(e)}")
+
+
+@router.get("/scraper-status")
+def get_josaa_scraper_status_endpoint():
+    """
+    Returns live progress, percentage, stage, and telemetry for the background JoSAA scraper.
+    """
+    from app.services.scrape_josaa_official import get_josaa_scraper_status
+    return get_josaa_scraper_status()
+
+
 
