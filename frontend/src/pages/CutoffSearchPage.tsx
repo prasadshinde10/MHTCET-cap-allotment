@@ -339,18 +339,33 @@ export const CutoffSearchPage: React.FC = () => {
 
   // Determine computed category query parameter
   const computedCategoryQuery = useMemo(() => {
+    if (activePanel === 'ALL_INDIA') return 'AI';
     if (reservationType === 'TFWS') return 'TFWS';
     if (reservationType === 'EWS') return 'EWS';
     if (reservationType === 'DEF') {
-      return casteCategory ? `DEF${casteCategory}` : 'DEF';
+      return casteCategory ? `DEF%${casteCategory}` : 'DEF';
     }
     if (reservationType === 'PWD') {
-      return casteCategory ? `PWD${casteCategory}` : 'PWD';
+      return casteCategory ? `PWD%${casteCategory}` : 'PWD';
     }
     if (reservationType === 'ORPHAN') return 'ORPHAN';
     if (reservationType === 'MI') return 'MI';
-    return casteCategory || undefined;
-  }, [reservationType, casteCategory]);
+
+    // No special reservation:
+    if (casteCategory) {
+      if (gender === 'ladies') {
+        return `L${casteCategory}`;
+      } else {
+        // "All Seats (Open to All)" in CAP indicates General merit seats (G...)
+        return `G${casteCategory}`;
+      }
+    }
+
+    if (gender === 'ladies') {
+      return 'L';
+    }
+    return undefined;
+  }, [activePanel, reservationType, casteCategory, gender]);
 
   // Computed district query parameter ensuring Sambhajinagar/Aurangabad and Dharashiv/Osmanabad match all colleges
   const computedDistrictQuery = useMemo(() => {
@@ -528,6 +543,48 @@ export const CutoffSearchPage: React.FC = () => {
           }
           if (autonomyStatus === 'Non-Autonomous' && isAutonomous) {
             return;
+          }
+        }
+
+        // Filter out unintended categories (e.g. DEF, PWD, Ladies when seeking General)
+        if (activePanel === 'STATE') {
+          const itemCat = (item.category_code || '').toUpperCase();
+          if (reservationType === '') {
+            // No special reservation: ensure no DEF, PWD, TFWS, EWS, ORPHAN, MI seats leak through
+            if (
+              itemCat.startsWith('DEF') ||
+              itemCat.startsWith('PWD') ||
+              itemCat.startsWith('TFWS') ||
+              itemCat.startsWith('EWS') ||
+              itemCat.startsWith('ORPHAN') ||
+              itemCat.startsWith('MI')
+            ) {
+              return;
+            }
+            if (casteCategory) {
+              const expectedPrefix = gender === 'ladies' ? `L${casteCategory.toUpperCase()}` : `G${casteCategory.toUpperCase()}`;
+              if (!itemCat.startsWith(expectedPrefix)) {
+                return;
+              }
+            } else if (gender === 'ladies') {
+              if (!itemCat.startsWith('L')) {
+                return;
+              }
+            }
+          } else if (reservationType === 'DEF') {
+            if (!itemCat.startsWith('DEF')) return;
+            if (casteCategory && !itemCat.includes(casteCategory.toUpperCase())) return;
+          } else if (reservationType === 'PWD') {
+            if (!itemCat.startsWith('PWD')) return;
+            if (casteCategory && !itemCat.includes(casteCategory.toUpperCase())) return;
+          } else if (reservationType === 'TFWS') {
+            if (!itemCat.startsWith('TFWS')) return;
+          } else if (reservationType === 'EWS') {
+            if (!itemCat.startsWith('EWS')) return;
+          } else if (reservationType === 'ORPHAN') {
+            if (!itemCat.startsWith('ORPHAN')) return;
+          } else if (reservationType === 'MI') {
+            if (!itemCat.startsWith('MI')) return;
           }
         }
 

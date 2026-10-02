@@ -103,19 +103,35 @@ def get_cutoff_query(
     elif course_code:
         stmt = stmt.where(Course.course_code == course_code)
 
+    cat_handled_gender = False
     if category_code:
-        stmt = stmt.where(Cutoff.category_code.ilike(f"%{category_code}%"))
+        cat = category_code.strip()
+        cat_upper = cat.upper()
+        if '%' in cat:
+            pat = cat if cat.endswith('%') else f"{cat}%"
+            stmt = stmt.where(Cutoff.category_code.ilike(pat))
+        elif cat_upper in ['OPEN', 'OBC', 'SC', 'ST', 'VJ', 'NT1', 'NT2', 'NT3', 'SEBC']:
+            # Bare caste category passed without gender prefix
+            if gender and gender.strip().lower() in ['ladies', 'l', 'female']:
+                stmt = stmt.where(Cutoff.category_code.ilike(f"L{cat_upper}%"))
+                cat_handled_gender = True
+            elif gender and gender.strip().lower() in ['general', 'g', 'male']:
+                stmt = stmt.where(Cutoff.category_code.ilike(f"G{cat_upper}%"))
+                cat_handled_gender = True
+            else:
+                stmt = stmt.where(
+                    or_(
+                        Cutoff.category_code.ilike(f"G{cat_upper}%"),
+                        Cutoff.category_code.ilike(f"L{cat_upper}%")
+                    )
+                )
+        else:
+            stmt = stmt.where(Cutoff.category_code.ilike(f"{cat}%"))
 
-    if gender:
+    if gender and not cat_handled_gender:
         g = gender.strip().lower()
         if g in ['general', 'g', 'male']:
-            stmt = stmt.where(
-                or_(
-                    Cutoff.gender.ilike('General'),
-                    Cutoff.gender == 'G',
-                    Cutoff.category_code.like('G%')
-                )
-            )
+            stmt = stmt.where(Cutoff.category_code.like('G%'))
         elif g in ['ladies', 'l', 'female']:
             stmt = stmt.where(
                 or_(
