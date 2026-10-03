@@ -3,6 +3,10 @@ from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+
 class Settings(BaseSettings):
     # Database
     DATABASE_URL: str
@@ -36,9 +40,10 @@ class Settings(BaseSettings):
     LOGIN_LOCKOUT_MINUTES: int = 15
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=[str(ROOT_DIR / ".env"), ".env", "backend/.env"],
         env_file_encoding="utf-8",
         case_sensitive=True,
+        extra="ignore",
     )
 
 

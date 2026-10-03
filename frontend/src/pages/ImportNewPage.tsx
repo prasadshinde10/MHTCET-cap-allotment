@@ -128,7 +128,7 @@ export function ImportNewPage() {
     } else if (isJosaaScrapingActive && josaaScraperProgress && !josaaScraperProgress.is_running) {
       setIsJosaaScrapingActive(false);
       if (josaaScraperProgress.status === 'COMPLETED') {
-        toast.success(josaaScraperProgress.message || 'JoSAA cutoffs for Years 2024 & 2025 scraped and ingested successfully!');
+        toast.success(josaaScraperProgress.message || 'JoSAA cutoffs for Years 2025 & 2026 scraped and ingested successfully!');
         refetchJosaaStats();
         queryClient.invalidateQueries({ queryKey: ['josaaFilterOptions'] });
         queryClient.invalidateQueries({ queryKey: ['josaaCutoffs'] });
@@ -530,7 +530,7 @@ export function ImportNewPage() {
               className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 shadow-sm shadow-indigo-900/40"
             >
               <Globe className={`w-3.5 h-3.5 mr-1.5 ${isJosaaScrapingActive ? 'animate-spin' : ''}`} />
-              {isJosaaScrapingActive ? 'Scraping JoSAA (2024 & 2025)...' : 'Run JoSAA Web Scraper (2024 & 2025)'}
+              {isJosaaScrapingActive ? 'Scraping JoSAA (2025 & 2026)...' : 'Run JoSAA Web Scraper (2025 & 2026)'}
             </Button>
             <Button
               variant="danger"
@@ -556,12 +556,12 @@ export function ImportNewPage() {
                 <span>JoSAA Multi-Year Web Scraper Running</span>
                 {josaaScraperProgress.current_year && (
                   <span className="text-[11px] font-bold text-amber-300 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60">
-                    Year {josaaScraperProgress.current_year} • Round {josaaScraperProgress.current_round} of 5
+                    Year {josaaScraperProgress.current_year} • Round {josaaScraperProgress.current_round} of {josaaScraperProgress.current_year === 2025 ? 6 : 5}
                   </span>
                 )}
               </div>
               <span className="font-semibold text-slate-200">
-                {josaaScraperProgress.progress_percent}% Complete ({josaaScraperProgress.completed_rounds} / 10 Rounds)
+                {josaaScraperProgress.progress_percent}% Complete ({josaaScraperProgress.completed_rounds} / {josaaScraperProgress.total_rounds || 11} Rounds)
               </span>
             </div>
 
@@ -582,8 +582,8 @@ export function ImportNewPage() {
                 <span className="truncate">{josaaScraperProgress.message}</span>
               </div>
               <div className="flex items-center gap-4 text-xs font-mono shrink-0">
-                <span className="text-indigo-400">{josaaScraperProgress.records_2024.toLocaleString()} (2024)</span>
-                <span className="text-purple-400">{josaaScraperProgress.records_2025.toLocaleString()} (2025)</span>
+                <span className="text-indigo-400">{josaaScraperProgress.records_2025.toLocaleString()} (2025)</span>
+                <span className="text-purple-400">{josaaScraperProgress.records_2026.toLocaleString()} (2026)</span>
                 <span className="text-emerald-400 font-bold">{josaaScraperProgress.total_records.toLocaleString()} total</span>
               </div>
             </div>

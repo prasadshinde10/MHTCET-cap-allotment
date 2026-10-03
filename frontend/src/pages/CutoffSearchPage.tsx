@@ -74,16 +74,17 @@ const AUTONOMY_STATUSES = [
 ];
 
 const GENDER_OPTIONS = [
-  { value: '', label: 'All Seats (Open to All)' },
-  { value: 'ladies', label: 'Ladies Only (Female Reserved Seats)' },
+  { value: '', label: 'All Types (General & Ladies Cutoffs)' },
+  { value: 'general', label: 'General Only (G Seats - Open to All)' },
+  { value: 'ladies', label: 'Ladies Only (L Seats - Female Quota)' },
 ];
 
 const ROUND_OPTIONS = [
-  { value: '', label: 'All Rounds (Rounds I – IV)' },
-  { value: '1', label: 'CAP Round I Only' },
-  { value: '2', label: 'CAP Round II Only' },
-  { value: '3', label: 'CAP Round III Only' },
-  { value: '4', label: 'CAP Round IV Only' },
+  { value: '', label: 'All Rounds (Rounds 1 – 4)' },
+  { value: '1', label: 'CAP Round 1' },
+  { value: '2', label: 'CAP Round 2' },
+  { value: '3', label: 'CAP Round 3' },
+  { value: '4', label: 'CAP Round 4' },
 ];
 
 export const CutoffSearchPage: React.FC = () => {
@@ -121,14 +122,37 @@ export const CutoffSearchPage: React.FC = () => {
     return param ? param.split(',').map((s) => s.trim()).filter(Boolean) : [];
   });
   const [capYear, setCapYear] = useState<string>(searchParams.get('year') || '2026');
-  const [capRound, setCapRound] = useState<string>(searchParams.get('round') || '');
-  const [studentPercentile, setStudentPercentile] = useState<string>(searchParams.get('percentile') || '');
+  const [selectedCapRounds, setSelectedCapRounds] = useState<string[]>(() => {
+    const param = searchParams.get('round');
+    return param ? param.split(',').map((s) => s.trim()).filter(Boolean) : [];
+  });
+  const [scoreMode, setScoreMode] = useState<'percentile' | 'rank'>(() => {
+    const mode = searchParams.get('scoreMode');
+    if (mode === 'rank' || (!mode && searchParams.get('rank'))) return 'rank';
+    return 'percentile';
+  });
+  const [studentPercentile, setStudentPercentile] = useState<string>(() => {
+    const mode = searchParams.get('scoreMode');
+    if (mode === 'rank' || (!mode && searchParams.get('rank'))) return '';
+    return searchParams.get('percentile') || '';
+  });
+  const [studentRank, setStudentRank] = useState<string>(() => {
+    const mode = searchParams.get('scoreMode');
+    if (mode === 'percentile' || (!mode && !searchParams.get('rank') && searchParams.get('percentile'))) return '';
+    return searchParams.get('rank') || '';
+  });
+
+  // Check if candidate score (percentile or merit rank) has been entered
+  const hasCandidateScore = Boolean(
+    (scoreMode === 'percentile' && studentPercentile.trim() !== '') ||
+    (scoreMode === 'rank' && studentRank.trim() !== '')
+  );
 
   // UI Control States
   const [hasSearched, setHasSearched] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [tableFilter, setTableFilter] = useState('');
-  const [sortBy, setSortBy] = useState<'percentile_desc' | 'percentile_asc' | 'college' | 'course'>('percentile_desc');
+  const [sortBy, setSortBy] = useState<'percentile_desc' | 'percentile_asc' | 'merit_asc' | 'merit_desc' | 'college' | 'course'>('percentile_desc');
 
   // Synchronize state when URL query parameters change (e.g. from Search History navigation)
   useEffect(() => {
@@ -144,9 +168,11 @@ export const CutoffSearchPage: React.FC = () => {
     const yearParam = searchParams.get('year');
     const roundParam = searchParams.get('round');
     const pctParam = searchParams.get('percentile');
+    const rankParam = searchParams.get('rank');
+    const scoreModeParam = searchParams.get('scoreMode');
 
     const hasAnyParam = Boolean(
-      collegeParam || courseParam || statusParam || typeParam || autoParam || catParam || resParam || genParam || distParam || yearParam || roundParam || pctParam
+      collegeParam || courseParam || statusParam || typeParam || autoParam || catParam || resParam || genParam || distParam || yearParam || roundParam || pctParam || rankParam
     );
 
     if (hasAnyParam) {
@@ -168,8 +194,24 @@ export const CutoffSearchPage: React.FC = () => {
         setSelectedDistricts(distParam ? distParam.split(',').map((s) => s.trim()).filter(Boolean) : []);
       }
       if (yearParam !== null) setCapYear(yearParam);
-      if (roundParam !== null) setCapRound(roundParam);
-      if (pctParam !== null) setStudentPercentile(pctParam);
+      if (roundParam !== null) {
+        setSelectedCapRounds(roundParam ? roundParam.split(',').map((s) => s.trim()).filter(Boolean) : []);
+      }
+      if (rankParam) {
+        setStudentRank(rankParam);
+        setStudentPercentile('');
+        setScoreMode('rank');
+      } else if (pctParam) {
+        setStudentPercentile(pctParam);
+        setStudentRank('');
+        setScoreMode('percentile');
+      } else if (rankParam === '' || pctParam === '') {
+        if (rankParam === '') setStudentRank('');
+        if (pctParam === '') setStudentPercentile('');
+      }
+      if (scoreModeParam === 'rank' || scoreModeParam === 'percentile') {
+        setScoreMode(scoreModeParam);
+      }
       setHasSearched(true);
     }
   }, [searchParams]);
@@ -340,32 +382,95 @@ export const CutoffSearchPage: React.FC = () => {
   // Determine computed category query parameter
   const computedCategoryQuery = useMemo(() => {
     if (activePanel === 'ALL_INDIA') return 'AI';
-    if (reservationType === 'TFWS') return 'TFWS';
-    if (reservationType === 'EWS') return 'EWS';
-    if (reservationType === 'DEF') {
-      return casteCategory ? `DEF%${casteCategory}` : 'DEF';
-    }
-    if (reservationType === 'PWD') {
-      return casteCategory ? `PWD%${casteCategory}` : 'PWD';
-    }
-    if (reservationType === 'ORPHAN') return 'ORPHAN';
-    if (reservationType === 'MI') return 'MI';
 
-    // No special reservation:
-    if (casteCategory) {
-      if (gender === 'ladies') {
-        return `L${casteCategory}`;
-      } else {
-        // "All Seats (Open to All)" in CAP indicates General merit seats (G...)
-        return `G${casteCategory}`;
+    // Pure Lookup Mode (no candidate score/rank entered):
+    // Show strictly the selected category/gender cutoffs.
+    if (!hasCandidateScore) {
+      if (reservationType === 'TFWS') return 'TFWS';
+      if (reservationType === 'EWS') return 'EWS';
+      if (reservationType === 'DEF') {
+        return casteCategory ? `DEF%${casteCategory}` : 'DEF';
       }
+      if (reservationType === 'PWD') {
+        return casteCategory ? `PWD%${casteCategory}` : 'PWD';
+      }
+      if (reservationType === 'ORPHAN') return 'ORPHAN';
+      if (reservationType === 'MI') return 'MI';
+
+      // No special reservation:
+      if (casteCategory) {
+        if (gender === 'ladies') {
+          return `L${casteCategory}`;
+        } else if (gender === 'general') {
+          return `G${casteCategory}`;
+        } else {
+          // All Types: query both General and Ladies seats
+          return `G${casteCategory},L${casteCategory}`;
+        }
+      }
+
+      if (gender === 'ladies') {
+        return 'L';
+      } else if (gender === 'general') {
+        return 'G';
+      }
+      return undefined;
     }
 
-    if (gender === 'ladies') {
-      return 'L';
+    // Candidate Recommendation Mode (Score or Rank is entered):
+    // In MHT CET CAP, reserved category candidates also compete for General/Open merit seats (GOPEN, LOPEN).
+    // Female candidates also compete for General (G...) seats in addition to Ladies (L...) seats.
+    // When "All Types" is selected, evaluate recommendations across all quotas.
+    const isFemale = gender === 'ladies';
+    const isAllGender = gender === '' || gender === 'all';
+    const includeLadies = isFemale || isAllGender;
+
+    if (reservationType === 'TFWS') {
+      return 'TFWS';
     }
-    return undefined;
-  }, [activePanel, reservationType, casteCategory, gender]);
+
+    if (reservationType === 'EWS') {
+      return includeLadies ? 'EWS,LOPEN,GOPEN' : 'EWS,GOPEN';
+    }
+
+    if (reservationType === 'DEF') {
+      const defCode = casteCategory ? `DEF%${casteCategory}` : 'DEF';
+      if (casteCategory && casteCategory !== 'OPEN') {
+        return includeLadies
+          ? `${defCode},L${casteCategory},G${casteCategory},LOPEN,GOPEN`
+          : `${defCode},G${casteCategory},GOPEN`;
+      }
+      return includeLadies ? `${defCode},LOPEN,GOPEN` : `${defCode},GOPEN`;
+    }
+
+    if (reservationType === 'PWD') {
+      const pwdCode = casteCategory ? `PWD%${casteCategory}` : 'PWD';
+      if (casteCategory && casteCategory !== 'OPEN') {
+        return includeLadies
+          ? `${pwdCode},L${casteCategory},G${casteCategory},LOPEN,GOPEN`
+          : `${pwdCode},G${casteCategory},GOPEN`;
+      }
+      return includeLadies ? `${pwdCode},LOPEN,GOPEN` : `${pwdCode},GOPEN`;
+    }
+
+    if (reservationType === 'ORPHAN' || reservationType === 'MI') {
+      return includeLadies ? `${reservationType},LOPEN,GOPEN` : `${reservationType},GOPEN`;
+    }
+
+    // Standard caste category (reservationType === ''):
+    if (casteCategory && casteCategory !== 'OPEN') {
+      return includeLadies
+        ? `L${casteCategory},G${casteCategory},LOPEN,GOPEN`
+        : `G${casteCategory},GOPEN`;
+    }
+
+    // Caste is OPEN or unselected:
+    if (includeLadies) {
+      return 'LOPEN,GOPEN';
+    }
+
+    return 'GOPEN';
+  }, [activePanel, reservationType, casteCategory, gender, hasCandidateScore]);
 
   // Computed district query parameter ensuring Sambhajinagar/Aurangabad and Dharashiv/Osmanabad match all colleges
   const computedDistrictQuery = useMemo(() => {
@@ -399,9 +504,9 @@ export const CutoffSearchPage: React.FC = () => {
   // Query Cutoffs
   // Determine which rounds to query
   const roundsToQuery = useMemo(() => {
-    if (capRound) return [Number(capRound)];
+    if (selectedCapRounds.length > 0) return selectedCapRounds.map(Number);
     return [1, 2, 3, 4];
-  }, [capRound]);
+  }, [selectedCapRounds]);
 
   // Build common query params (shared across all round queries)
   const commonQueryParams = useMemo(() => ({
@@ -411,39 +516,40 @@ export const CutoffSearchPage: React.FC = () => {
     college_code: selectedColleges.length > 0 ? selectedColleges.join(',') : undefined,
     course: selectedCourses.length > 0 ? selectedCourses.join(',') : undefined,
     category_code: computedCategoryQuery,
-    gender: gender || undefined,
+    gender: (activePanel === 'ALL_INDIA' || hasCandidateScore || !gender || gender === 'all') ? undefined : (gender || undefined),
     city_district: computedDistrictQuery,
-    max_percentile: studentPercentile ? Number(studentPercentile) : undefined,
+    max_percentile: scoreMode === 'percentile' && studentPercentile ? Number(studentPercentile) : undefined,
+    min_merit: scoreMode === 'rank' && studentRank ? Number(studentRank) : undefined,
     is_deleted: false as const,
     quota_group: activePanel,
     college_type: autonomyStatus || undefined,
     funding_type: collegeType || undefined,
-  }), [capYear, selectedColleges, selectedCourses, computedCategoryQuery, gender, computedDistrictQuery, studentPercentile, activePanel, collegeType, autonomyStatus]);
+  }), [capYear, selectedColleges, selectedCourses, computedCategoryQuery, gender, computedDistrictQuery, scoreMode, studentPercentile, studentRank, activePanel, collegeType, autonomyStatus, hasCandidateScore]);
 
   // Fetch Round 1
   const { data: round1Data, isLoading: r1Loading, isError: r1Error, error: r1Err, refetch: r1Refetch } = useQuery({
-    queryKey: ['cutoffsR1', commonQueryParams],
+    queryKey: ['cutoffsR1', commonQueryParams, selectedCapRounds.join(',')],
     queryFn: () => getCutoffs({ ...commonQueryParams, round_number: 1 }),
     enabled: hasSearched && roundsToQuery.includes(1),
   });
 
   // Fetch Round 2
   const { data: round2Data, isLoading: r2Loading, isError: r2Error, error: r2Err, refetch: r2Refetch } = useQuery({
-    queryKey: ['cutoffsR2', commonQueryParams],
+    queryKey: ['cutoffsR2', commonQueryParams, selectedCapRounds.join(',')],
     queryFn: () => getCutoffs({ ...commonQueryParams, round_number: 2 }),
     enabled: hasSearched && roundsToQuery.includes(2),
   });
 
   // Fetch Round 3
   const { data: round3Data, isLoading: r3Loading, isError: r3Error, error: r3Err, refetch: r3Refetch } = useQuery({
-    queryKey: ['cutoffsR3', commonQueryParams],
+    queryKey: ['cutoffsR3', commonQueryParams, selectedCapRounds.join(',')],
     queryFn: () => getCutoffs({ ...commonQueryParams, round_number: 3 }),
     enabled: hasSearched && roundsToQuery.includes(3),
   });
 
   // Fetch Round 4
   const { data: round4Data, isLoading: r4Loading, isError: r4Error, error: r4Err, refetch: r4Refetch } = useQuery({
-    queryKey: ['cutoffsR4', commonQueryParams],
+    queryKey: ['cutoffsR4', commonQueryParams, selectedCapRounds.join(',')],
     queryFn: () => getCutoffs({ ...commonQueryParams, round_number: 4 }),
     enabled: hasSearched && roundsToQuery.includes(4),
   });
@@ -549,42 +655,122 @@ export const CutoffSearchPage: React.FC = () => {
         // Filter out unintended categories (e.g. DEF, PWD, Ladies when seeking General)
         if (activePanel === 'STATE') {
           const itemCat = (item.category_code || '').toUpperCase();
-          if (reservationType === '') {
-            // No special reservation: ensure no DEF, PWD, TFWS, EWS, ORPHAN, MI seats leak through
-            if (
-              itemCat.startsWith('DEF') ||
-              itemCat.startsWith('PWD') ||
-              itemCat.startsWith('TFWS') ||
-              itemCat.startsWith('EWS') ||
-              itemCat.startsWith('ORPHAN') ||
-              itemCat.startsWith('MI')
-            ) {
-              return;
-            }
-            if (casteCategory) {
-              const expectedPrefix = gender === 'ladies' ? `L${casteCategory.toUpperCase()}` : `G${casteCategory.toUpperCase()}`;
-              if (!itemCat.startsWith(expectedPrefix)) {
+
+          if (!hasCandidateScore) {
+            // Mode 1: Pure Lookup Mode (No score/rank entered)
+            // Show strictly the selected category/gender cutoffs.
+            if (reservationType === '') {
+              // Ensure no special reservation seats leak through
+              if (
+                itemCat.startsWith('DEF') ||
+                itemCat.startsWith('PWD') ||
+                itemCat.startsWith('TFWS') ||
+                itemCat.startsWith('EWS') ||
+                itemCat.startsWith('ORPHAN') ||
+                itemCat.startsWith('MI')
+              ) {
                 return;
               }
-            } else if (gender === 'ladies') {
-              if (!itemCat.startsWith('L')) {
+              const catUpper = casteCategory ? casteCategory.toUpperCase() : '';
+              if (catUpper) {
+                if (gender === 'ladies') {
+                  if (!itemCat.startsWith(`L${catUpper}`)) return;
+                } else if (gender === 'general') {
+                  if (!itemCat.startsWith(`G${catUpper}`)) return;
+                } else {
+                  // All Types: allow both G<Category> and L<Category>
+                  if (!itemCat.startsWith(`G${catUpper}`) && !itemCat.startsWith(`L${catUpper}`)) {
+                    return;
+                  }
+                }
+              } else {
+                if (gender === 'ladies') {
+                  if (!itemCat.startsWith('L')) return;
+                } else if (gender === 'general') {
+                  if (!itemCat.startsWith('G')) return;
+                }
+                // All Types: allow both G and L
+              }
+            } else if (reservationType === 'DEF') {
+              if (!itemCat.startsWith('DEF')) return;
+              if (casteCategory && !itemCat.includes(casteCategory.toUpperCase())) return;
+            } else if (reservationType === 'PWD') {
+              if (!itemCat.startsWith('PWD')) return;
+              if (casteCategory && !itemCat.includes(casteCategory.toUpperCase())) return;
+            } else if (reservationType === 'TFWS') {
+              if (!itemCat.startsWith('TFWS')) return;
+            } else if (reservationType === 'EWS') {
+              if (!itemCat.startsWith('EWS')) return;
+            } else if (reservationType === 'ORPHAN') {
+              if (!itemCat.startsWith('ORPHAN')) return;
+            } else if (reservationType === 'MI') {
+              if (!itemCat.startsWith('MI')) return;
+            }
+          } else {
+            // Mode 2: Candidate Recommendation Mode (Score/Rank entered)
+            // Reserved candidates also compete for GOPEN/LOPEN and G<Category> seats.
+            const isFemale = gender === 'ladies';
+            const isAllGender = gender === '' || gender === 'all';
+            const includeLadies = isFemale || isAllGender;
+
+            if (reservationType === 'TFWS') {
+              if (!itemCat.startsWith('TFWS')) return;
+            } else if (reservationType === 'EWS') {
+              const allowed = includeLadies ? ['EWS', 'LOPEN', 'GOPEN'] : ['EWS', 'GOPEN'];
+              if (!allowed.some((prefix) => itemCat.startsWith(prefix))) return;
+            } else if (reservationType === 'DEF') {
+              const catUpper = casteCategory ? casteCategory.toUpperCase() : '';
+              const allowed = includeLadies
+                ? ['DEF', ...(catUpper && catUpper !== 'OPEN' ? [`L${catUpper}`, `G${catUpper}`] : []), 'LOPEN', 'GOPEN']
+                : ['DEF', ...(catUpper && catUpper !== 'OPEN' ? [`G${catUpper}`] : []), 'GOPEN'];
+              if (!allowed.some((prefix) => itemCat.startsWith(prefix))) return;
+            } else if (reservationType === 'PWD') {
+              const catUpper = casteCategory ? casteCategory.toUpperCase() : '';
+              const allowed = includeLadies
+                ? ['PWD', ...(catUpper && catUpper !== 'OPEN' ? [`L${catUpper}`, `G${catUpper}`] : []), 'LOPEN', 'GOPEN']
+                : ['PWD', ...(catUpper && catUpper !== 'OPEN' ? [`G${catUpper}`] : []), 'GOPEN'];
+              if (!allowed.some((prefix) => itemCat.startsWith(prefix))) return;
+            } else if (reservationType === 'ORPHAN') {
+              const allowed = includeLadies ? ['ORPHAN', 'LOPEN', 'GOPEN'] : ['ORPHAN', 'GOPEN'];
+              if (!allowed.some((prefix) => itemCat.startsWith(prefix))) return;
+            } else if (reservationType === 'MI') {
+              const allowed = includeLadies ? ['MI', 'LOPEN', 'GOPEN'] : ['MI', 'GOPEN'];
+              if (!allowed.some((prefix) => itemCat.startsWith(prefix))) return;
+            } else {
+              // reservationType === ''
+              // Reject other special reservations (DEF, PWD, TFWS, etc.) unless requested
+              if (
+                itemCat.startsWith('DEF') ||
+                itemCat.startsWith('PWD') ||
+                itemCat.startsWith('TFWS') ||
+                itemCat.startsWith('EWS') ||
+                itemCat.startsWith('ORPHAN') ||
+                itemCat.startsWith('MI')
+              ) {
+                return;
+              }
+
+              const catUpper = casteCategory ? casteCategory.toUpperCase() : '';
+              let allowedPrefixes: string[] = [];
+
+              if (catUpper && catUpper !== 'OPEN') {
+                if (includeLadies) {
+                  allowedPrefixes = [`L${catUpper}`, `G${catUpper}`, 'LOPEN', 'GOPEN'];
+                } else {
+                  allowedPrefixes = [`G${catUpper}`, 'GOPEN'];
+                }
+              } else {
+                if (includeLadies) {
+                  allowedPrefixes = ['LOPEN', 'GOPEN'];
+                } else {
+                  allowedPrefixes = ['GOPEN'];
+                }
+              }
+
+              if (!allowedPrefixes.some((prefix) => itemCat.startsWith(prefix))) {
                 return;
               }
             }
-          } else if (reservationType === 'DEF') {
-            if (!itemCat.startsWith('DEF')) return;
-            if (casteCategory && !itemCat.includes(casteCategory.toUpperCase())) return;
-          } else if (reservationType === 'PWD') {
-            if (!itemCat.startsWith('PWD')) return;
-            if (casteCategory && !itemCat.includes(casteCategory.toUpperCase())) return;
-          } else if (reservationType === 'TFWS') {
-            if (!itemCat.startsWith('TFWS')) return;
-          } else if (reservationType === 'EWS') {
-            if (!itemCat.startsWith('EWS')) return;
-          } else if (reservationType === 'ORPHAN') {
-            if (!itemCat.startsWith('ORPHAN')) return;
-          } else if (reservationType === 'MI') {
-            if (!itemCat.startsWith('MI')) return;
           }
         }
 
@@ -626,13 +812,64 @@ export const CutoffSearchPage: React.FC = () => {
       });
     };
 
-    // Process all round data
-    processItems(round1Data?.items, 1);
-    processItems(round2Data?.items, 2);
-    processItems(round3Data?.items, 3);
-    processItems(round4Data?.items, 4);
+    // Process round data only for rounds that were requested
+    if (roundsToQuery.includes(1)) processItems(round1Data?.items, 1);
+    if (roundsToQuery.includes(2)) processItems(round2Data?.items, 2);
+    if (roundsToQuery.includes(3)) processItems(round3Data?.items, 3);
+    if (roundsToQuery.includes(4)) processItems(round4Data?.items, 4);
 
-    const rows = Array.from(map.values());
+    const allRows = Array.from(map.values());
+
+    // Helper to test if a candidate qualifies for a round's cutoff
+    const isRoundEligible = (roundData: { percentile?: number; meritNumber?: number } | null | undefined): boolean => {
+      if (!roundData) return false;
+      if (scoreMode === 'percentile') {
+        const studentScore = studentPercentile ? Number(studentPercentile) : null;
+        return (
+          studentScore !== null &&
+          roundData.percentile !== undefined &&
+          roundData.percentile !== null &&
+          roundData.percentile <= studentScore
+        );
+      } else if (scoreMode === 'rank') {
+        const studentRankNum = studentRank ? Number(studentRank) : null;
+        return (
+          studentRankNum !== null &&
+          roundData.meritNumber !== undefined &&
+          roundData.meritNumber !== null &&
+          roundData.meritNumber >= studentRankNum
+        );
+      }
+      return false;
+    };
+
+    const activeRounds = selectedCapRounds.length > 0 ? selectedCapRounds.map(Number) : [1, 2, 3, 4];
+
+    // Filter rows based on eligibility in the selected round(s)
+    // Requirement: When candidate score is entered, in result show ONLY colleges for which candidate is eligible for selected round(s)
+    const rows = allRows.filter((row) => {
+      if (!hasCandidateScore) {
+        // Pure lookup mode: row must have cutoff data in at least one of the active rounds
+        return activeRounds.some((r) => row.rounds[r as 1 | 2 | 3 | 4] !== null);
+      }
+
+      // Candidate Recommendation Mode:
+      // Candidate MUST be eligible in at least one of the selected rounds
+      return activeRounds.some((r) => isRoundEligible(row.rounds[r as 1 | 2 | 3 | 4]));
+    });
+
+    // Helper to get best round value for sorting across active rounds
+    const getBestRoundVal = (row: GroupedCutoffRow, field: 'percentile' | 'meritNumber') => {
+      for (const r of activeRounds) {
+        const val = row.rounds[r as 1 | 2 | 3 | 4]?.[field];
+        if (val !== undefined && val !== null) return val;
+      }
+      for (const r of [1, 2, 3, 4]) {
+        const val = row.rounds[r as 1 | 2 | 3 | 4]?.[field];
+        if (val !== undefined && val !== null) return val;
+      }
+      return undefined;
+    };
 
     // Sort rows
     return rows.sort((a, b) => {
@@ -642,10 +879,19 @@ export const CutoffSearchPage: React.FC = () => {
       if (sortBy === 'course') {
         return a.courseName.localeCompare(b.courseName);
       }
+      if (sortBy === 'merit_asc') {
+        const mA = getBestRoundVal(a, 'meritNumber') ?? 999999999;
+        const mB = getBestRoundVal(b, 'meritNumber') ?? 999999999;
+        return mA - mB;
+      }
+      if (sortBy === 'merit_desc') {
+        const mA = getBestRoundVal(a, 'meritNumber') ?? -1;
+        const mB = getBestRoundVal(b, 'meritNumber') ?? -1;
+        return mB - mA;
+      }
       
-      // By percentile (best round 1 or earliest available round)
-      const pA = a.rounds[1]?.percentile ?? a.rounds[2]?.percentile ?? a.rounds[3]?.percentile ?? a.rounds[4]?.percentile ?? -1;
-      const pB = b.rounds[1]?.percentile ?? b.rounds[2]?.percentile ?? b.rounds[3]?.percentile ?? b.rounds[4]?.percentile ?? -1;
+      const pA = getBestRoundVal(a, 'percentile') ?? -1;
+      const pB = getBestRoundVal(b, 'percentile') ?? -1;
 
       if (sortBy === 'percentile_asc') {
         return pA - pB;
@@ -653,7 +899,28 @@ export const CutoffSearchPage: React.FC = () => {
       // percentile_desc
       return pB - pA;
     });
-  }, [round1Data, round2Data, round3Data, round4Data, collegeMetaMap, collegeType, selectedStatuses, autonomyStatus, selectedColleges, sortBy]);
+  }, [
+    round1Data,
+    round2Data,
+    round3Data,
+    round4Data,
+    collegeMetaMap,
+    collegeType,
+    selectedStatuses,
+    autonomyStatus,
+    selectedColleges,
+    sortBy,
+    activePanel,
+    reservationType,
+    casteCategory,
+    gender,
+    hasCandidateScore,
+    selectedCapRounds,
+    roundsToQuery,
+    scoreMode,
+    studentPercentile,
+    studentRank,
+  ]);
 
   // Filter grouped rows by quick search input
   const filteredGroupedRows = useMemo(() => {
@@ -668,6 +935,22 @@ export const CutoffSearchPage: React.FC = () => {
         r.district.toLowerCase().includes(q)
     );
   }, [groupedRows, tableFilter]);
+
+  // Switch score mode between Percentile and Rank - strictly mutually exclusive
+  const handleScoreModeChange = (mode: 'percentile' | 'rank') => {
+    setScoreMode(mode);
+    if (mode === 'percentile') {
+      setStudentRank(''); // Allow only one at a time
+      if (sortBy === 'merit_asc' || sortBy === 'merit_desc') {
+        setSortBy('percentile_desc');
+      }
+    } else {
+      setStudentPercentile(''); // Allow only one at a time
+      if (sortBy === 'percentile_desc' || sortBy === 'percentile_asc') {
+        setSortBy('merit_asc');
+      }
+    }
+  };
 
   // Handle Find Colleges
   const handleFindColleges = (e?: React.FormEvent) => {
@@ -684,14 +967,49 @@ export const CutoffSearchPage: React.FC = () => {
       status: selectedStatuses.join(','),
       category: casteCategory,
       reservation: reservationType,
-      gender,
+      gender: activePanel === 'ALL_INDIA' ? '' : gender,
       district: selectedDistricts.join(','),
       year: capYear,
-      round: capRound,
-      percentile: studentPercentile,
+      round: selectedCapRounds.join(','),
+      percentile: scoreMode === 'percentile' && studentPercentile ? studentPercentile : undefined,
+      rank: scoreMode === 'rank' && studentRank ? studentRank : undefined,
+      scoreMode,
     };
 
     saveSearchHistory(currentFilters, groupedRows.length);
+
+    // Sync search parameters to URL for bookmarking / sharing
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      p.set('panel', activePanel === 'ALL_INDIA' ? 'all_india' : 'state');
+      if (selectedColleges.length > 0) p.set('college', selectedColleges.join(',')); else p.delete('college');
+      if (selectedCourses.length > 0) p.set('course', selectedCourses.join(',')); else p.delete('course');
+      if (collegeType) p.set('collegeType', collegeType); else p.delete('collegeType');
+      if (autonomyStatus) p.set('autonomy', autonomyStatus); else p.delete('autonomy');
+      if (selectedStatuses.length > 0) p.set('status', selectedStatuses.join(',')); else p.delete('status');
+      if (casteCategory && activePanel !== 'ALL_INDIA') p.set('category', casteCategory); else p.delete('category');
+      if (reservationType && activePanel !== 'ALL_INDIA') p.set('reservation', reservationType); else p.delete('reservation');
+      if (gender && activePanel !== 'ALL_INDIA') p.set('gender', gender); else p.delete('gender');
+      if (selectedDistricts.length > 0) p.set('district', selectedDistricts.join(',')); else p.delete('district');
+      if (capYear) p.set('year', capYear); else p.delete('year');
+      if (selectedCapRounds.length > 0) p.set('round', selectedCapRounds.join(',')); else p.delete('round');
+      
+      if (scoreMode === 'percentile' && studentPercentile) {
+        p.set('percentile', studentPercentile);
+        p.set('scoreMode', 'percentile');
+        p.delete('rank');
+      } else if (scoreMode === 'rank' && studentRank) {
+        p.set('rank', studentRank);
+        p.set('scoreMode', 'rank');
+        p.delete('percentile');
+      } else {
+        p.delete('percentile');
+        p.delete('rank');
+        p.delete('scoreMode');
+      }
+      return p;
+    });
+
     toast.success('Search executed', { duration: 2000 });
   };
 
@@ -707,9 +1025,12 @@ export const CutoffSearchPage: React.FC = () => {
     setGender('');
     setSelectedDistricts([]);
     setCapYear(filterOptions?.years?.[0]?.toString() || '2026');
-    setCapRound('');
+    setSelectedCapRounds([]);
     setStudentPercentile('');
+    setStudentRank('');
+    setScoreMode('percentile');
     setTableFilter('');
+    setSortBy('percentile_desc');
     setSearchParams({});
     toast.success('Filters reset to default');
   };
@@ -741,21 +1062,28 @@ export const CutoffSearchPage: React.FC = () => {
       const found = RESERVATION_TYPES.find((r) => r.value === reservationType);
       chips.push({ id: 'reservation', label: 'Reservation', value: found ? found.label.split(' ')[0] : reservationType });
     }
-    if (gender === 'ladies') {
-      chips.push({ id: 'gender', label: 'Quota', value: 'Ladies Only' });
+    if (activePanel !== 'ALL_INDIA') {
+      if (gender === 'ladies') {
+        chips.push({ id: 'gender', label: 'Gender Quota', value: 'Ladies Only (L)' });
+      } else if (gender === 'general') {
+        chips.push({ id: 'gender', label: 'Gender Quota', value: 'General Only (G)' });
+      }
     }
     selectedDistricts.forEach((d) => {
       const found = districtOptions.find((opt) => opt.value === d);
       chips.push({ id: `district:${d}`, label: 'District', value: found ? found.label : d });
     });
-    if (capRound) {
-      chips.push({ id: 'round', label: 'CAP Round', value: `Round ${capRound}` });
-    }
-    if (studentPercentile) {
+    selectedCapRounds.forEach((r) => {
+      chips.push({ id: `round:${r}`, label: 'CAP Round', value: `Round ${r}` });
+    });
+    if (scoreMode === 'percentile' && studentPercentile) {
       chips.push({ id: 'percentile', label: 'Score', value: `≤ ${Number(studentPercentile).toFixed(4)}%` });
     }
+    if (scoreMode === 'rank' && studentRank) {
+      chips.push({ id: 'rank', label: 'Merit Rank', value: `≤ #${Number(studentRank).toLocaleString()} (Closing ≥ Candidate)` });
+    }
     return chips;
-  }, [selectedColleges, selectedCourses, selectedStatuses, collegeType, autonomyStatus, casteCategory, reservationType, gender, selectedDistricts, districtOptions, capRound, studentPercentile]);
+  }, [selectedColleges, selectedCourses, selectedStatuses, collegeType, autonomyStatus, casteCategory, reservationType, gender, selectedDistricts, districtOptions, selectedCapRounds, scoreMode, studentPercentile, studentRank, activePanel]);
 
   const handleRemoveChip = (id: string) => {
     if (id.startsWith('college:')) {
@@ -778,6 +1106,11 @@ export const CutoffSearchPage: React.FC = () => {
       setSelectedDistricts((prev) => prev.filter((item) => item !== d));
       return;
     }
+    if (id.startsWith('round:')) {
+      const r = id.replace('round:', '');
+      setSelectedCapRounds((prev) => prev.filter((item) => item !== r));
+      return;
+    }
     switch (id) {
       case 'collegeType':
         setCollegeType('');
@@ -795,10 +1128,13 @@ export const CutoffSearchPage: React.FC = () => {
         setGender('');
         break;
       case 'round':
-        setCapRound('');
+        setSelectedCapRounds([]);
         break;
       case 'percentile':
         setStudentPercentile('');
+        break;
+      case 'rank':
+        setStudentRank('');
         break;
     }
   };
@@ -859,8 +1195,11 @@ export const CutoffSearchPage: React.FC = () => {
     toast.success('Cutoff comparison exported to CSV');
   };
 
-  // Format round cell
-  const renderRoundCell = (roundData: { percentile?: number; meritNumber?: number } | null) => {
+  // Format round cell - only highlights cutoff percentile and rank for the selected round(s)
+  const renderRoundCell = (
+    roundData: { percentile?: number; meritNumber?: number } | null,
+    roundNum: number
+  ) => {
     if (!roundData || (roundData.percentile === undefined && roundData.meritNumber === undefined)) {
       return (
         <span className="inline-block px-2 py-0.5 text-xs font-mono font-medium text-gray-400 bg-gray-50 border border-gray-100 rounded">
@@ -869,24 +1208,78 @@ export const CutoffSearchPage: React.FC = () => {
       );
     }
 
-    const studentScore = studentPercentile ? Number(studentPercentile) : null;
-    const isEligible = studentScore !== null && roundData.percentile !== undefined && roundData.percentile <= studentScore;
-    const margin = isEligible && roundData.percentile !== undefined ? (studentScore - roundData.percentile).toFixed(2) : null;
+    const studentScore = scoreMode === 'percentile' && studentPercentile ? Number(studentPercentile) : null;
+    const studentRankNum = scoreMode === 'rank' && studentRank ? Number(studentRank) : null;
+
+    const isEligibleByPercentile = studentScore !== null && roundData.percentile !== undefined && roundData.percentile <= studentScore;
+    const percentileMargin = isEligibleByPercentile && roundData.percentile !== undefined ? (studentScore - roundData.percentile).toFixed(2) : null;
+
+    const isEligibleByRank = studentRankNum !== null && roundData.meritNumber !== undefined && roundData.meritNumber >= studentRankNum;
+    const rankMargin = isEligibleByRank && roundData.meritNumber !== undefined ? (roundData.meritNumber - studentRankNum) : null;
+
+    const isEligible = isEligibleByPercentile || isEligibleByRank;
+
+    // Check if this round is selected in the round filter
+    // If no specific rounds are selected (selectedCapRounds is empty), all rounds are active
+    const isRoundSelected = selectedCapRounds.length === 0 || selectedCapRounds.includes(roundNum.toString());
+
+    // Highlight ONLY when candidate score is entered, candidate is eligible, AND this round is in selected round(s)
+    const shouldHighlight = hasCandidateScore && isRoundSelected && isEligible;
+
+    if (scoreMode === 'rank') {
+      return (
+        <div className="flex flex-col items-end">
+          <div className="flex items-center gap-1">
+            {shouldHighlight && (
+              <span
+                className="inline-flex items-center text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1 rounded ring-1 ring-emerald-200"
+                title={`Eligible in Round ${roundNum}: Closing rank (#${roundData.meritNumber?.toLocaleString()}) accepted candidate's rank (#${studentRankNum?.toLocaleString()}) with ${rankMargin?.toLocaleString()} rank buffer`}
+              >
+                ✓
+              </span>
+            )}
+            <span
+              className={`font-mono text-sm ${
+                shouldHighlight
+                  ? 'text-emerald-700 font-bold bg-emerald-50/70 px-1 rounded'
+                  : 'text-gray-900 font-semibold'
+              }`}
+            >
+              {roundData.meritNumber !== undefined ? `#${roundData.meritNumber.toLocaleString()}` : 'N/A'}
+            </span>
+          </div>
+          {roundData.percentile !== undefined && (
+            <span className={`text-[11px] font-mono ${shouldHighlight ? 'text-emerald-600 font-medium' : 'text-gray-500'}`}>
+              {roundData.percentile.toFixed(4)}%
+            </span>
+          )}
+        </div>
+      );
+    }
 
     return (
       <div className="flex flex-col items-end">
         <div className="flex items-center gap-1">
-          {isEligible && (
-            <span className="inline-flex items-center text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1 rounded" title={`Eligible: Student score is ${margin}% above cutoff`}>
+          {shouldHighlight && (
+            <span
+              className="inline-flex items-center text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1 rounded ring-1 ring-emerald-200"
+              title={`Eligible in Round ${roundNum}: Student score is ${percentileMargin}% above cutoff`}
+            >
               ✓
             </span>
           )}
-          <span className={`font-mono font-semibold text-sm ${isEligible ? 'text-emerald-700 font-bold' : 'text-gray-900'}`}>
+          <span
+            className={`font-mono text-sm ${
+              shouldHighlight
+                ? 'text-emerald-700 font-bold bg-emerald-50/70 px-1 rounded'
+                : 'text-gray-900 font-semibold'
+            }`}
+          >
             {roundData.percentile !== undefined ? `${roundData.percentile.toFixed(4)}%` : 'N/A'}
           </span>
         </div>
         {roundData.meritNumber !== undefined && (
-          <span className="text-[11px] font-mono text-gray-500">
+          <span className={`text-[11px] font-mono ${shouldHighlight ? 'text-emerald-600 font-medium' : 'text-gray-500'}`}>
             Merit #{roundData.meritNumber.toLocaleString()}
           </span>
         )}
@@ -957,11 +1350,13 @@ export const CutoffSearchPage: React.FC = () => {
                 setActivePanel('ALL_INDIA');
                 setCasteCategory('');
                 setReservationType('');
+                setGender('');
                 setSearchParams((prev) => {
                   const p = new URLSearchParams(prev);
                   p.set('panel', 'all_india');
                   p.delete('category');
                   p.delete('reservation');
+                  p.delete('gender');
                   return p;
                 });
               }}
@@ -1039,42 +1434,110 @@ export const CutoffSearchPage: React.FC = () => {
                 />
               </div>
 
-              {/* Student's MHT-CET Percentile Score */}
+              {/* Candidate Score: Percentile OR Rank (Strictly Mutually Exclusive) */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Student's MHT-CET Percentile
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.0000001"
-                    min="0"
-                    max="100"
-                    placeholder="e.g. 85.1234567"
-                    value={studentPercentile}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === '' || (Number(val) >= 0 && Number(val) <= 100)) {
-                        setStudentPercentile(val);
-                      }
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 placeholder-gray-400"
-                  />
-                  {studentPercentile && (
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    {scoreMode === 'percentile'
+                      ? (activePanel === 'STATE' ? "Student's MHT-CET Percentile" : "Student's AI / JEE Percentile")
+                      : (activePanel === 'STATE' ? "State Merit Rank (SML)" : "All India Merit Rank (AI Rank)")}
+                  </label>
+                  {/* Mode Selector - Only one allowed at a time */}
+                  <div className="inline-flex items-center rounded-lg p-0.5 bg-gray-100 border border-gray-200">
                     <button
                       type="button"
-                      onClick={() => setStudentPercentile('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
-                      title="Clear score"
+                      onClick={() => handleScoreModeChange('percentile')}
+                      className={`px-2.5 py-0.5 text-xs font-semibold rounded-md transition-all ${
+                        scoreMode === 'percentile'
+                          ? 'bg-white text-primary-700 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-900'
+                      }`}
+                      title="Filter by candidate percentile"
                     >
-                      ✕
+                      % Percentile
                     </button>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => handleScoreModeChange('rank')}
+                      className={`px-2.5 py-0.5 text-xs font-semibold rounded-md transition-all ${
+                        scoreMode === 'rank'
+                          ? 'bg-white text-primary-700 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-900'
+                      }`}
+                      title="Filter by candidate merit rank"
+                    >
+                      # Merit Rank
+                    </button>
+                  </div>
                 </div>
+
+                {scoreMode === 'percentile' ? (
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.0000001"
+                      min="0"
+                      max="100"
+                      placeholder="e.g. 85.1234567"
+                      value={studentPercentile}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || (Number(val) >= 0 && Number(val) <= 100)) {
+                          setStudentPercentile(val);
+                          setStudentRank(''); // Allow only one at a time
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 placeholder-gray-400"
+                    />
+                    {studentPercentile && (
+                      <button
+                        type="button"
+                        onClick={() => setStudentPercentile('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                        title="Clear score"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      placeholder={activePanel === 'STATE' ? 'e.g. 15420 (State Merit Rank)' : 'e.g. 23500 (All India Rank)'}
+                      value={studentRank}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || (Number(val) >= 1 && Number.isInteger(Number(val)))) {
+                          setStudentRank(val);
+                          setStudentPercentile(''); // Allow only one at a time
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 placeholder-gray-400"
+                    />
+                    {studentRank && (
+                      <button
+                        type="button"
+                        onClick={() => setStudentRank('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                        title="Clear rank"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <p className="mt-1 text-xs text-gray-500">
-                  {studentPercentile
-                    ? `Shows colleges with cutoff ≤ ${Number(studentPercentile).toFixed(4)}%`
-                    : 'Enter score to see recommended colleges'}
+                  {scoreMode === 'percentile'
+                    ? (studentPercentile
+                        ? `Shows colleges with cutoff ≤ ${Number(studentPercentile).toFixed(4)}%`
+                        : 'Enter percentile (0–100) to see recommended colleges')
+                    : (studentRank
+                        ? `Shows colleges with closing rank ≥ #${Number(studentRank).toLocaleString()} (candidate qualifies)`
+                        : 'Enter merit rank to see colleges where you qualify')}
                 </p>
               </div>
 
@@ -1101,7 +1564,7 @@ export const CutoffSearchPage: React.FC = () => {
               </h3>
               {activePanel === 'ALL_INDIA' && (
                 <span className="text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                  ℹ️ All India Quota is purely merit-based (JEE Main). State caste & reservation quotas do not apply.
+                  ℹ️ All India Quota is purely merit-based (JEE Main / AI Merit). State caste, reservation, and gender quotas do not apply.
                 </span>
               )}
             </div>
@@ -1132,9 +1595,10 @@ export const CutoffSearchPage: React.FC = () => {
               <div>
                 <Select
                   label="Gender / Quota"
-                  value={gender}
+                  value={activePanel === 'ALL_INDIA' ? '' : gender}
                   onChange={(e) => setGender(e.target.value)}
                   options={GENDER_OPTIONS}
+                  disabled={activePanel === 'ALL_INDIA'}
                 />
               </div>
             </div>
@@ -1211,14 +1675,58 @@ export const CutoffSearchPage: React.FC = () => {
                 />
               </div>
 
-              {/* Optional CAP Round */}
+              {/* CAP Round Filter - Multi-Select Checklist & Options */}
               <div>
-                <Select
-                  label="CAP Round Filter (Optional)"
-                  value={capRound}
-                  onChange={(e) => setCapRound(e.target.value)}
+                <SearchableSelect
+                  label="CAP Round Filter (Multi-Select)"
+                  placeholder="All Rounds (Rounds 1 – 4)"
+                  multiple={true}
+                  values={selectedCapRounds}
+                  onMultiChange={setSelectedCapRounds}
                   options={ROUND_OPTIONS}
+                  helperText={
+                    selectedCapRounds.length > 0
+                      ? `${selectedCapRounds.length} round(s) selected • Evaluates eligibility only for checked round(s)`
+                      : 'Multi-select CAP rounds with checklist, or leave blank for All Rounds'
+                  }
                 />
+                {/* Inline Round Checklist Pills */}
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <span className="text-[11px] text-gray-500 font-medium mr-0.5">Quick rounds:</span>
+                  {['1', '2', '3', '4'].map((r) => {
+                    const isChecked = selectedCapRounds.includes(r);
+                    return (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => {
+                          if (isChecked) {
+                            setSelectedCapRounds(selectedCapRounds.filter((x) => x !== r));
+                          } else {
+                            setSelectedCapRounds([...selectedCapRounds, r]);
+                          }
+                        }}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-all ${
+                          isChecked
+                            ? 'bg-primary-600 text-white font-bold shadow-2xs ring-1 ring-primary-500'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        <span>{isChecked ? '☑' : '☐'}</span>
+                        <span>Round {r}</span>
+                      </button>
+                    );
+                  })}
+                  {selectedCapRounds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCapRounds([])}
+                      className="text-[11px] text-primary-600 hover:text-primary-800 underline ml-1 font-medium"
+                    >
+                      Clear / All Rounds
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1261,16 +1769,39 @@ export const CutoffSearchPage: React.FC = () => {
               2
             </span>
             <h2 className="text-base font-bold text-gray-900 tracking-tight">
-              {studentPercentile ? 'Recommended Colleges' : 'Matching College Results'}
+              {hasCandidateScore ? 'Recommended Colleges' : 'Matching College Results'}
             </h2>
             {hasSearched && (
               <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                {filteredGroupedRows.length} {studentPercentile ? 'recommended' : 'matching'} offering{filteredGroupedRows.length === 1 ? '' : 's'}
+                {filteredGroupedRows.length}{' '}
+                {hasCandidateScore ? 'recommended' : 'matching'}{' '}
+                offering{filteredGroupedRows.length === 1 ? '' : 's'}
               </span>
             )}
-            {hasSearched && studentPercentile && (
+            {hasSearched && scoreMode === 'percentile' && studentPercentile && (
               <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
                 Score: {Number(studentPercentile).toFixed(2)}% (Cutoff ≤ Score)
+              </span>
+            )}
+            {hasSearched && scoreMode === 'rank' && studentRank && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                Rank: #{Number(studentRank).toLocaleString()} (Closing Rank ≥ Candidate Rank)
+              </span>
+            )}
+            {hasSearched && hasCandidateScore && activePanel === 'STATE' && (
+              <span
+                className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200"
+                title="Reserved and female candidates also compete for General/Open merit seats as per CAP rules"
+              >
+                Includes General Merit (GOPEN{gender === 'ladies' || !gender ? ' / LOPEN' : ''})
+              </span>
+            )}
+            {hasSearched && hasCandidateScore && selectedCapRounds.length > 0 && (
+              <span
+                className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200"
+                title="Showing only colleges for which candidate is eligible in the selected round(s)"
+              >
+                Eligibility: Round {selectedCapRounds.join(', ')} only
               </span>
             )}
           </div>
@@ -1298,8 +1829,10 @@ export const CutoffSearchPage: React.FC = () => {
                   onChange={(e) => setSortBy(e.target.value as any)}
                   className="bg-transparent text-xs text-gray-700 focus:outline-none"
                 >
-                  <option value="percentile_desc">Cutoff: High to Low</option>
-                  <option value="percentile_asc">Cutoff: Low to High</option>
+                  <option value="percentile_desc">Cutoff: Highest Percentile</option>
+                  <option value="percentile_asc">Cutoff: Lowest Percentile</option>
+                  <option value="merit_asc">Merit Rank: Top to Bottom (1 → N)</option>
+                  <option value="merit_desc">Merit Rank: Bottom to Top (N → 1)</option>
                   <option value="college">College Name</option>
                   <option value="course">Course Name</option>
                 </select>
@@ -1438,18 +1971,30 @@ export const CutoffSearchPage: React.FC = () => {
                     <th scope="col" className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Category / Quota
                     </th>
-                    <th scope="col" className="px-4 py-3.5 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider bg-blue-50/40">
-                      Round 1
-                    </th>
-                    <th scope="col" className="px-4 py-3.5 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Round 2
-                    </th>
-                    <th scope="col" className="px-4 py-3.5 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Round 3
-                    </th>
-                    <th scope="col" className="px-4 py-3.5 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Round 4
-                    </th>
+                    {[1, 2, 3, 4].map((rNum) => {
+                      const isSelected = selectedCapRounds.length === 0 || selectedCapRounds.includes(rNum.toString());
+                      return (
+                        <th
+                          key={rNum}
+                          scope="col"
+                          className={`px-4 py-3.5 text-right text-xs uppercase tracking-wider transition-colors ${
+                            isSelected
+                              ? 'bg-primary-50/70 text-primary-950 font-bold border-b-2 border-primary-500'
+                              : 'bg-gray-50/40 text-gray-400 font-medium'
+                          }`}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            {isSelected && selectedCapRounds.length > 0 && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-primary-600 inline-block" />
+                            )}
+                            <span>Round {rNum}</span>
+                          </div>
+                          <div className="text-[10px] font-normal normal-case font-mono mt-0.5 opacity-75">
+                            {scoreMode === 'rank' ? '#Rank / %' : '% / #Rank'}
+                          </div>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 bg-white text-sm">
@@ -1507,25 +2052,20 @@ export const CutoffSearchPage: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Round 1 */}
-                      <td className="px-4 py-3.5 align-top text-right bg-blue-50/20">
-                        {renderRoundCell(row.rounds[1])}
-                      </td>
-
-                      {/* Round 2 */}
-                      <td className="px-4 py-3.5 align-top text-right">
-                        {renderRoundCell(row.rounds[2])}
-                      </td>
-
-                      {/* Round 3 */}
-                      <td className="px-4 py-3.5 align-top text-right">
-                        {renderRoundCell(row.rounds[3])}
-                      </td>
-
-                      {/* Round 4 */}
-                      <td className="px-4 py-3.5 align-top text-right">
-                        {renderRoundCell(row.rounds[4])}
-                      </td>
+                      {/* Round 1 – 4 Cells */}
+                      {[1, 2, 3, 4].map((rNum) => {
+                        const isSelected = selectedCapRounds.length === 0 || selectedCapRounds.includes(rNum.toString());
+                        return (
+                          <td
+                            key={rNum}
+                            className={`px-4 py-3.5 align-top text-right transition-colors ${
+                              isSelected ? 'bg-primary-50/15' : ''
+                            }`}
+                          >
+                            {renderRoundCell(row.rounds[rNum as 1 | 2 | 3 | 4], rNum)}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
@@ -1591,22 +2131,28 @@ export const CutoffSearchPage: React.FC = () => {
                     Round-wise Cutoffs
                   </div>
                   <div className="grid grid-cols-4 gap-2 text-center">
-                    <div className="p-2 bg-blue-50/50 rounded-lg border border-blue-100">
-                      <div className="text-[10px] font-bold text-blue-900 uppercase">Round 1</div>
-                      <div className="mt-1">{renderRoundCell(row.rounds[1])}</div>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded-lg border border-gray-100">
-                      <div className="text-[10px] font-bold text-gray-600 uppercase">Round 2</div>
-                      <div className="mt-1">{renderRoundCell(row.rounds[2])}</div>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded-lg border border-gray-100">
-                      <div className="text-[10px] font-bold text-gray-600 uppercase">Round 3</div>
-                      <div className="mt-1">{renderRoundCell(row.rounds[3])}</div>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded-lg border border-gray-100">
-                      <div className="text-[10px] font-bold text-gray-600 uppercase">Round 4</div>
-                      <div className="mt-1">{renderRoundCell(row.rounds[4])}</div>
-                    </div>
+                    {[1, 2, 3, 4].map((rNum) => {
+                      const isSelected = selectedCapRounds.length === 0 || selectedCapRounds.includes(rNum.toString());
+                      return (
+                        <div
+                          key={rNum}
+                          className={`p-2 rounded-lg border transition-all ${
+                            isSelected
+                              ? 'bg-primary-50/50 border-primary-200 ring-1 ring-primary-300'
+                              : 'bg-gray-50/60 border-gray-100 opacity-75'
+                          }`}
+                        >
+                          <div
+                            className={`text-[10px] font-bold uppercase ${
+                              isSelected ? 'text-primary-900 font-extrabold' : 'text-gray-400 font-normal'
+                            }`}
+                          >
+                            Round {rNum} {isSelected && selectedCapRounds.length > 0 ? '★' : ''}
+                          </div>
+                          <div className="mt-1">{renderRoundCell(row.rounds[rNum as 1 | 2 | 3 | 4], rNum)}</div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

@@ -11,6 +11,8 @@ export interface SearchHistoryFilters {
   year: string;
   round: string;
   percentile?: string;
+  rank?: string;
+  scoreMode?: 'percentile' | 'rank';
 }
 
 export interface SearchHistoryItem {

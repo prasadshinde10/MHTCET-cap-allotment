@@ -1,45 +1,94 @@
-# Virtual environments
+# ==============================================================================
+# Python & Virtual Environments
+# ==============================================================================
 venv/
 .venv/
 env/
+ENV/
+env.bak/
+venv.bak/
 
-# Python cache & build outputs
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-*.pyo
+**/__pycache__/
+*.py[cod]
+*$py.class
 *.pyd
-.pytest_cache/
 
+# C extensions & testing
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ==============================================================================
 # Databases & SQLite files (Do not push heavy local DB binaries)
+# ==============================================================================
 *.db
 *.db-journal
 *.db-shm
 *.db-wal
 *.sqlite
 *.sqlite3
+josaa.db
+cap_portal.db
+cutoff.db
 
+# ==============================================================================
 # PDF files & local storage uploads/backups
+# ==============================================================================
 *.pdf
 storage/
+**/storage/
 uploads/
+**/uploads/
 backups/
+**/backups/
 
-# Node & Frontend build artifacts
+# ==============================================================================
+# Node & Frontend Build Artifacts
+# ==============================================================================
 node_modules/
+**/node_modules/
 frontend/node_modules/
 dist/
+**/dist/
+frontend/dist/
 build/
+**/build/
+frontend/build/
 .output/
+.vite/
+**/.vite/
+frontend/.vite/
+*.tsbuildinfo
 
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==============================================================================
 # Environment files & secret keys
-.env
+# ==============================================================================
 backend/.env
+backend/.env.*
+!backend/.env.example
 *.env.local
 
+# ==============================================================================
 # OS & Editor files
+# ==============================================================================
 .DS_Store
 Thumbs.db
+desktop.ini
 .vscode/
 .idea/
 *.log
 *.bak
+*.swp
+*.swo
+*~

@@ -30,6 +30,7 @@ export interface JosaaFilterOptions {
   categories: JosaaCategoryItem[];
   quotas: string[];
   genders: string[];
+  states?: string[];
 }
 
 export interface JosaaCutoff {
@@ -64,10 +65,12 @@ export interface JosaaCutoffResponse {
 }
 
 export interface JosaaCutoffParams {
-  round_no?: number;
+  round_no?: string;
   institute_type?: string;
   institute_name?: string;
   institute_id?: number;
+  state?: string;
+  candidate_state?: string;
   academic_program?: string;
   program_id?: number;
   category?: string;
@@ -130,8 +133,8 @@ export interface JosaaScraperStatus {
   current_year: number | null;
   current_round: number | null;
   message: string;
-  records_2024: number;
   records_2025: number;
+  records_2026: number;
   total_records: number;
   total_rounds: number;
   completed_rounds: number;

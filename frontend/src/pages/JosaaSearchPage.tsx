@@ -54,7 +54,7 @@ export const JosaaSearchPage: React.FC = () => {
       if (prevRunningRef.current && !scraperStatus.is_running) {
         setPollScraper(false);
         if (scraperStatus.status === 'COMPLETED') {
-          toast.success('JoSAA cutoffs for Years 2024 & 2025 scraped and ingested successfully!');
+          toast.success('JoSAA cutoffs for Years 2025 & 2026 scraped and ingested successfully!');
           queryClient.invalidateQueries({ queryKey: ['josaaFilterOptions'] });
           queryClient.invalidateQueries({ queryKey: ['josaaCutoffs'] });
           queryClient.invalidateQueries({ queryKey: ['josaaStats'] });
@@ -116,14 +116,22 @@ export const JosaaSearchPage: React.FC = () => {
     if (param.includes('||')) {
       return param.split('||').map((s) => s.trim()).filter(Boolean);
     }
+    if (param.includes(',')) {
+      return param.split(',').map((s) => s.trim()).filter(Boolean);
+    }
     return [param.trim()].filter(Boolean);
   };
 
   // Filter states
-  const [roundNo, setRoundNo] = useState<string>(searchParams.get('round') || '');
+  const [selectedRounds, setSelectedRounds] = useState<string[]>(() => {
+    return parseMultiParam(searchParams.get('round'));
+  });
   const [instituteType, setInstituteType] = useState<string>(searchParams.get('type') || '');
   const [selectedInstitutes, setSelectedInstitutes] = useState<string[]>(() => {
     return parseMultiParam(searchParams.get('institute'));
+  });
+  const [selectedStates, setSelectedStates] = useState<string[]>(() => {
+    return parseMultiParam(searchParams.get('candidate_state') || searchParams.get('state'));
   });
   const [selectedPrograms, setSelectedPrograms] = useState<string[]>(() => {
     return parseMultiParam(searchParams.get('program'));
@@ -131,7 +139,7 @@ export const JosaaSearchPage: React.FC = () => {
   const [category, setCategory] = useState<string>(searchParams.get('category') || '');
   const [quota, setQuota] = useState<string>(searchParams.get('quota') || '');
   const [gender, setGender] = useState<string>(searchParams.get('gender') || '');
-  const [academicYear, setAcademicYear] = useState<string>(searchParams.get('year') || '2025');
+  const [academicYear, setAcademicYear] = useState<string>(searchParams.get('year') || '2026');
   const [candidateRank, setCandidateRank] = useState<string>(searchParams.get('rank') || '');
 
   // UI state
@@ -146,6 +154,7 @@ export const JosaaSearchPage: React.FC = () => {
     const roundParam = searchParams.get('round');
     const typeParam = searchParams.get('type');
     const instParam = searchParams.get('institute');
+    const stateParam = searchParams.get('candidate_state') || searchParams.get('state');
     const progParam = searchParams.get('program');
     const catParam = searchParams.get('category');
     const quotaParam = searchParams.get('quota');
@@ -153,11 +162,12 @@ export const JosaaSearchPage: React.FC = () => {
     const yrParam = searchParams.get('year');
     const rkParam = searchParams.get('rank');
 
-    const hasAny = Boolean(roundParam || typeParam || instParam || progParam || catParam || quotaParam || genParam || yrParam || rkParam);
+    const hasAny = Boolean(roundParam || typeParam || instParam || stateParam || progParam || catParam || quotaParam || genParam || yrParam || rkParam);
     if (hasAny) {
-      if (roundParam !== null) setRoundNo(roundParam);
+      if (roundParam !== null) setSelectedRounds(parseMultiParam(roundParam));
       if (typeParam !== null) setInstituteType(typeParam);
       if (instParam !== null) setSelectedInstitutes(parseMultiParam(instParam));
+      if (stateParam !== null) setSelectedStates(parseMultiParam(stateParam));
       if (progParam !== null) setSelectedPrograms(parseMultiParam(progParam));
       if (catParam !== null) setCategory(catParam);
       if (quotaParam !== null) setQuota(quotaParam);
@@ -181,6 +191,21 @@ export const JosaaSearchPage: React.FC = () => {
       setAcademicYear(filterOptions.years[0].toString());
     }
   }, [filterOptions, searchParams]);
+
+  // Prepare State options (Candidate Home States for HS & OS quota eligibility)
+  const stateOptions: SearchableOption[] = useMemo(() => {
+    const list: SearchableOption[] = [];
+    if (filterOptions?.states && filterOptions.states.length > 0) {
+      filterOptions.states.forEach((st) => {
+        list.push({
+          value: st,
+          label: st,
+          sublabel: 'State of Eligibility',
+        });
+      });
+    }
+    return list;
+  }, [filterOptions]);
 
   // Prepare Institute options (optionally filtered by instituteType)
   const instituteOptions: SearchableOption[] = useMemo(() => {
@@ -217,15 +242,12 @@ export const JosaaSearchPage: React.FC = () => {
   // JoSAA Rounds dropdown options
   const roundSelectOptions = useMemo(() => {
     const list = [{ value: '', label: 'All JoSAA Rounds' }];
-    if (filterOptions?.rounds) {
-      filterOptions.rounds.forEach((r) => {
-        list.push({ value: String(r), label: `Round ${r}` });
-      });
-    } else {
-      for (let i = 1; i <= 6; i++) {
-        list.push({ value: String(i), label: `Round ${i}` });
-      }
-    }
+    const roundsList = (filterOptions?.rounds && filterOptions.rounds.length > 0)
+      ? filterOptions.rounds
+      : [1, 2, 3, 4, 5, 6];
+    roundsList.forEach((r) => {
+      list.push({ value: String(r), label: `Round ${r}` });
+    });
     return list;
   }, [filterOptions]);
 
@@ -266,26 +288,46 @@ export const JosaaSearchPage: React.FC = () => {
     return list;
   }, [filterOptions]);
 
-  // Quota options
+  // Quota options with descriptive labels
   const quotaOptions = useMemo(() => {
-    const list = [{ value: '', label: 'All Quotas (AI, HS, OS)' }];
-    if (filterOptions?.quotas) {
-      filterOptions.quotas.forEach((q) => {
-        let label = q;
-        if (q === 'AI') label = 'AI (All India Quota)';
-        else if (q === 'HS') label = 'HS (Home State Quota)';
-        else if (q === 'OS') label = 'OS (Other State Quota)';
-        list.push({ value: q, label });
-      });
-    }
+    const list = [{ value: '', label: 'All Quotas (AI, HS, OS, GO, JK, LA)' }];
+    const allQuotas = (filterOptions?.quotas && filterOptions.quotas.length > 0)
+      ? filterOptions.quotas
+      : ['AI', 'HS', 'OS', 'GO', 'JK', 'LA'];
+
+    allQuotas.forEach((q) => {
+      let label = q;
+      if (q === 'AI') label = 'AI (All India Quota)';
+      else if (q === 'HS') label = 'HS (Home State Quota)';
+      else if (q === 'OS') label = 'OS (Other State Quota)';
+      else if (q === 'GO') label = 'GO (Goa State Quota - NIT Goa)';
+      else if (q === 'JK') label = 'JK (Jammu & Kashmir Quota)';
+      else if (q === 'LA') label = 'LA (Ladakh Quota)';
+      list.push({ value: q, label });
+    });
     return list;
+  }, [filterOptions]);
+
+  // Academic Year options (guaranteeing 2026 & 2025)
+  const yearOptions = useMemo(() => {
+    const yearSet = new Set<number>([2026, 2025]);
+    if (filterOptions?.years) {
+      filterOptions.years.forEach((y) => yearSet.add(y));
+    }
+    return Array.from(yearSet)
+      .sort((a, b) => b - a)
+      .map((y) => ({
+        value: String(y),
+        label: `${y} Cutoffs`,
+      }));
   }, [filterOptions]);
 
   // Query cutoffs
   const queryParams = useMemo(() => ({
-    round_no: roundNo ? Number(roundNo) : undefined,
+    round_no: selectedRounds.length > 0 ? selectedRounds.join(',') : undefined,
     institute_type: instituteType || undefined,
     institute_name: selectedInstitutes.length > 0 ? selectedInstitutes.join('||') : undefined,
+    candidate_state: selectedStates.length > 0 ? selectedStates.join(',') : undefined,
     academic_program: selectedPrograms.length > 0 ? selectedPrograms.join('||') : undefined,
     category: category || undefined,
     quota: quota || undefined,
@@ -295,7 +337,7 @@ export const JosaaSearchPage: React.FC = () => {
     page,
     page_size: pageSize,
     sort_by: sortBy,
-  }), [roundNo, instituteType, selectedInstitutes, selectedPrograms, category, quota, gender, academicYear, candidateRank, page, pageSize, sortBy]);
+  }), [selectedRounds, instituteType, selectedInstitutes, selectedStates, selectedPrograms, category, quota, gender, academicYear, candidateRank, page, pageSize, sortBy]);
 
   const { data: cutoffsData, isLoading: isCutoffsLoading, isError, error, refetch } = useQuery({
     queryKey: ['josaaCutoffs', queryParams],
@@ -309,9 +351,10 @@ export const JosaaSearchPage: React.FC = () => {
     setHasSearched(true);
 
     const params = new URLSearchParams();
-    if (roundNo) params.set('round', roundNo);
+    if (selectedRounds.length > 0) params.set('round', selectedRounds.join(','));
     if (instituteType) params.set('type', instituteType);
     if (selectedInstitutes.length > 0) params.set('institute', selectedInstitutes.join('||'));
+    if (selectedStates.length > 0) params.set('candidate_state', selectedStates.join(','));
     if (selectedPrograms.length > 0) params.set('program', selectedPrograms.join('||'));
     if (category) params.set('category', category);
     if (quota) params.set('quota', quota);
@@ -324,9 +367,10 @@ export const JosaaSearchPage: React.FC = () => {
 
   // Reset Filters
   const handleReset = () => {
-    setRoundNo('');
+    setSelectedRounds([]);
     setInstituteType('');
     setSelectedInstitutes([]);
+    setSelectedStates([]);
     setSelectedPrograms([]);
     setCategory('');
     setQuota('');
@@ -338,10 +382,12 @@ export const JosaaSearchPage: React.FC = () => {
     toast.success('Filters reset');
   };
 
-  // Active filter chips (each selected institute and program has its own individual removable chip)
+  // Active filter chips (each selected institute, state, and program has its own individual removable chip)
   const activeFilterChips: ActiveFilter[] = useMemo(() => {
     const chips: ActiveFilter[] = [];
-    if (roundNo) chips.push({ id: 'round', label: 'Round', value: `Round ${roundNo}` });
+    selectedRounds.forEach((r) => {
+      chips.push({ id: `round:${r}`, label: 'Round', value: `Round ${r}` });
+    });
     if (instituteType) chips.push({ id: 'type', label: 'Type', value: instituteType });
     
     selectedInstitutes.forEach((inst) => {
@@ -349,6 +395,14 @@ export const JosaaSearchPage: React.FC = () => {
         id: `institute:${inst}`,
         label: 'Institute',
         value: inst,
+      });
+    });
+
+    selectedStates.forEach((st) => {
+      chips.push({
+        id: `state:${st}`,
+        label: 'Candidate State',
+        value: st,
       });
     });
 
@@ -365,14 +419,24 @@ export const JosaaSearchPage: React.FC = () => {
     if (gender) chips.push({ id: 'gender', label: 'Pool', value: gender });
     if (candidateRank) chips.push({ id: 'rank', label: 'JEE Rank ≤', value: `#${candidateRank}` });
     return chips;
-  }, [roundNo, instituteType, selectedInstitutes, selectedPrograms, category, quota, gender, candidateRank]);
+  }, [selectedRounds, instituteType, selectedInstitutes, selectedStates, selectedPrograms, category, quota, gender, candidateRank]);
 
   const removeFilterChip = (id: string) => {
-    if (id === 'round') setRoundNo('');
+    if (id.startsWith('round:')) {
+      const val = id.substring('round:'.length);
+      setSelectedRounds((prev) => prev.filter((item) => item !== val));
+      return;
+    }
+    if (id === 'round') setSelectedRounds([]);
     if (id === 'type') setInstituteType('');
     if (id.startsWith('institute:')) {
       const val = id.substring('institute:'.length);
       setSelectedInstitutes((prev) => prev.filter((item) => item !== val));
+      return;
+    }
+    if (id.startsWith('state:')) {
+      const val = id.substring('state:'.length);
+      setSelectedStates((prev) => prev.filter((item) => item !== val));
       return;
     }
     if (id.startsWith('program:')) {
@@ -388,7 +452,7 @@ export const JosaaSearchPage: React.FC = () => {
 
   // Institute Type styling helper
   const getInstituteTypeBadge = (type: string) => {
-    switch (type.toUpperCase()) {
+    switch ((type || '').toUpperCase()) {
       case 'IIT':
         return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">IIT</span>;
       case 'NIT':
@@ -398,6 +462,42 @@ export const JosaaSearchPage: React.FC = () => {
       default:
         return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300">GFTI</span>;
     }
+  };
+
+  // Quota description tooltip and badge helper
+  const getQuotaBadge = (quotaCode: string) => {
+    const q = (quotaCode || '').toUpperCase();
+    let title = q;
+    let colorClass = 'bg-slate-50 text-slate-800 border-slate-200';
+
+    if (q === 'AI') {
+      title = 'All India Quota (Open to candidates across India)';
+      colorClass = 'bg-blue-50 text-blue-800 border-blue-200';
+    } else if (q === 'HS') {
+      title = 'Home State Quota (Reserved for state domicile candidates)';
+      colorClass = 'bg-emerald-50 text-emerald-800 border-emerald-200';
+    } else if (q === 'OS') {
+      title = 'Other State Quota (NIT candidates outside home state)';
+      colorClass = 'bg-amber-50 text-amber-800 border-amber-200';
+    } else if (q === 'GO') {
+      title = 'Goa State Quota (Reserved specifically for candidates from Goa at NIT Goa)';
+      colorClass = 'bg-purple-50 text-purple-800 border-purple-200';
+    } else if (q === 'JK') {
+      title = 'Jammu & Kashmir Quota';
+      colorClass = 'bg-cyan-50 text-cyan-800 border-cyan-200';
+    } else if (q === 'LA') {
+      title = 'Ladakh Quota';
+      colorClass = 'bg-teal-50 text-teal-800 border-teal-200';
+    }
+
+    return (
+      <span
+        className={`font-semibold text-xs border px-2 py-0.5 rounded cursor-help ${colorClass}`}
+        title={title}
+      >
+        {q}
+      </span>
+    );
   };
 
   const candidateRankNum = candidateRank ? parseInt(candidateRank, 10) : null;
@@ -441,7 +541,7 @@ export const JosaaSearchPage: React.FC = () => {
                 title="Click to view live scraping progress"
               >
                 <Spinner className="w-3.5 h-3.5" />
-                <span>Scraping 2024 & 2025 ({scraperStatus.progress_percent}%)</span>
+                <span>Scraping 2025 & 2026 ({scraperStatus.progress_percent}%)</span>
               </button>
             )}
 
@@ -457,10 +557,10 @@ export const JosaaSearchPage: React.FC = () => {
               }}
               disabled={scraperMutation.isPending}
               className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-sm shadow-indigo-900/30"
-              title="Scrape complete official cutoffs for Years 2024 & 2025 across all rounds"
+              title="Scrape complete official cutoffs for Years 2025 & 2026 across all rounds"
             >
               <Globe className={`w-3.5 h-3.5 mr-1.5 ${scraperStatus?.is_running ? 'animate-spin' : ''}`} />
-              {scraperStatus?.is_running ? 'View Scraper Progress' : 'Web Scrape JoSAA (2024 & 2025)'}
+              {scraperStatus?.is_running ? 'View Scraper Progress' : 'Web Scrape JoSAA (2025 & 2026)'}
             </Button>
 
             <Button
@@ -502,7 +602,7 @@ export const JosaaSearchPage: React.FC = () => {
                     )}
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Extracting complete Opening & Closing Ranks across all 5 rounds for 2024 & 2025.
+                    Extracting complete Opening & Closing Ranks across all 5 rounds for 2025 & 2026.
                   </p>
                 </div>
               </div>
@@ -557,16 +657,16 @@ export const JosaaSearchPage: React.FC = () => {
               </div>
 
               <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-3 text-center">
-                <div className="text-[11px] text-slate-400 font-medium">Year 2024 Records</div>
+                <div className="text-[11px] text-slate-400 font-medium">Year 2025 Records</div>
                 <div className="text-base font-bold text-indigo-300 mt-0.5">
-                  {scraperStatus?.records_2024?.toLocaleString() ?? 0}
+                  {scraperStatus?.records_2025?.toLocaleString() ?? 0}
                 </div>
               </div>
 
               <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-3 text-center">
-                <div className="text-[11px] text-slate-400 font-medium">Year 2025 Records</div>
+                <div className="text-[11px] text-slate-400 font-medium">Year 2026 Records</div>
                 <div className="text-base font-bold text-purple-300 mt-0.5">
-                  {scraperStatus?.records_2025?.toLocaleString() ?? 0}
+                  {scraperStatus?.records_2026?.toLocaleString() ?? 0}
                 </div>
               </div>
 
@@ -584,7 +684,7 @@ export const JosaaSearchPage: React.FC = () => {
                 <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
                 <div>
                   <p className="font-semibold text-emerald-200">Scraping Completed Successfully!</p>
-                  <p className="text-emerald-300/80">Both 2024 and 2025 cutoffs are ingested, deduplicated, and ready for exploration.</p>
+                  <p className="text-emerald-300/80">Both 2025 and 2026 cutoffs are ingested, deduplicated, and ready for exploration.</p>
                 </div>
               </div>
             )}
@@ -650,7 +750,7 @@ export const JosaaSearchPage: React.FC = () => {
               <p className="font-semibold text-amber-900">Important Notes:</p>
               <p>1. Only the independent <span className="font-mono">josaa.db</span> file will be cleared.</p>
               <p>2. Your MHT-CET database and admin account remain completely unaffected.</p>
-              <p>3. You can click "Web Scrape JoSAA" anytime to scrape and reload official cutoffs for Years 2024 and 2025.</p>
+              <p>3. You can click "Web Scrape JoSAA" anytime to scrape and reload official cutoffs for Years 2025 and 2026.</p>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button
@@ -724,8 +824,8 @@ export const JosaaSearchPage: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 pt-0.5">
-            <span>Year 2024 Scraped: <strong className="text-indigo-300 font-semibold">{scraperStatus.records_2024.toLocaleString()}</strong> cutoffs</span>
-            <span>Year 2025 Scraped: <strong className="text-purple-300 font-semibold">{scraperStatus.records_2025.toLocaleString()}</strong> cutoffs</span>
+            <span>Year 2025 Scraped: <strong className="text-indigo-300 font-semibold">{scraperStatus.records_2025.toLocaleString()}</strong> cutoffs</span>
+            <span>Year 2026 Scraped: <strong className="text-purple-300 font-semibold">{scraperStatus.records_2026.toLocaleString()}</strong> cutoffs</span>
             <span>Total Ingested: <strong className="text-emerald-400 font-semibold">{scraperStatus.total_records.toLocaleString()}</strong> cutoffs</span>
           </div>
         </div>
@@ -741,7 +841,7 @@ export const JosaaSearchPage: React.FC = () => {
             <div>
               <h4 className="font-bold text-sm text-amber-100">JoSAA Database is Empty</h4>
               <p className="text-xs text-amber-300/80 mt-0.5">
-                No cutoff records found. Run the official web scraper to scrape and populate cutoffs for both 2024 and 2025 with live progress tracking.
+                No cutoff records found. Run the official web scraper to scrape and populate cutoffs for both 2025 and 2026 with live progress tracking.
               </p>
             </div>
           </div>
@@ -753,7 +853,7 @@ export const JosaaSearchPage: React.FC = () => {
             className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs whitespace-nowrap shadow-sm"
           >
             <Globe className="w-3.5 h-3.5 mr-1.5" />
-            Start Web Scraper (2024 & 2025)
+            Start Web Scraper (2025 & 2026)
           </Button>
         </div>
       )}
@@ -813,11 +913,18 @@ export const JosaaSearchPage: React.FC = () => {
         <div className="p-5 space-y-4">
           {/* Row 1: CAP Round, Institute Type, Category, Quota */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Select
+            <SearchableSelect
               label="JoSAA Round"
-              value={roundNo}
-              onChange={(e) => setRoundNo(e.target.value)}
+              placeholder="All JoSAA Rounds"
+              multiple={true}
+              values={selectedRounds}
+              onMultiChange={setSelectedRounds}
               options={roundSelectOptions}
+              helperText={
+                selectedRounds.length > 0
+                  ? `${selectedRounds.length} round(s) selected`
+                  : 'Multi-select any combination of JoSAA rounds'
+              }
             />
 
             <Select
@@ -869,8 +976,22 @@ export const JosaaSearchPage: React.FC = () => {
             />
           </div>
 
-          {/* Row 3: Seat Pool / Gender, Candidate JEE Rank, Year */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+          {/* Row 3: Home State (HS Quota), Seat Pool / Gender, Candidate JEE Rank, Year */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+            <SearchableSelect
+              label="Candidate Home State"
+              placeholder={stateOptions.length ? "All States (No Quota Restriction)..." : "No states available"}
+              options={stateOptions}
+              multiple
+              values={selectedStates}
+              onMultiChange={setSelectedStates}
+              helperText={
+                selectedStates.length
+                  ? `${selectedStates.length} state(s) selected • HS for local, OS for other states`
+                  : 'Applies HS quota for local NIT and OS quota for other states across India'
+              }
+            />
+
             <Select
               label="Seat Pool / Gender"
               value={gender}
@@ -914,12 +1035,7 @@ export const JosaaSearchPage: React.FC = () => {
               label="Academic Year"
               value={academicYear}
               onChange={(e) => setAcademicYear(e.target.value)}
-              options={
-                filterOptions?.years?.map((y) => ({ value: String(y), label: `${y} Cutoffs` })) || [
-                  { value: '2025', label: '2025 Cutoffs' },
-                  { value: '2024', label: '2024 Cutoffs' },
-                ]
-              }
+              options={yearOptions}
             />
           </div>
 
@@ -1134,9 +1250,7 @@ export const JosaaSearchPage: React.FC = () => {
 
                           {/* Quota */}
                           <td className="py-3 px-3 text-center whitespace-nowrap">
-                            <span className="font-semibold text-xs text-slate-800 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded">
-                              {row.quota}
-                            </span>
+                            {getQuotaBadge(row.quota)}
                           </td>
 
                           {/* Gender */}
@@ -1241,7 +1355,7 @@ export const JosaaSearchPage: React.FC = () => {
                         </div>
                         <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
                           <span>{row.degree_type || 'B.Tech'}</span>
-                          <span>Quota: <strong className="text-slate-700">{row.quota}</strong></span>
+                          <span className="flex items-center gap-1">Quota: {getQuotaBadge(row.quota)}</span>
                         </div>
                       </div>
                     </div>

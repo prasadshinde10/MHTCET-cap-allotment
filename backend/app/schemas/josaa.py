@@ -28,6 +28,7 @@ class JosaaFilterOptions(BaseModel):
     categories: List[JosaaCategoryItem]
     quotas: List[str]
     genders: List[str]
+    states: List[str] = []
 
 class JosaaCutoffItem(BaseModel):
     id: int

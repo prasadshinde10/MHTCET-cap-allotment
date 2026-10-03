@@ -20,7 +20,7 @@ router = APIRouter()
 def get_cutoff_query(
     db: Session,
     year: Optional[int] = None,
-    round_number: Optional[int] = None,
+    round_number: Optional[str] = None,
     cap_round_id: Optional[int] = None,
     college: Optional[str] = None,
     college_code: Optional[str] = None,
@@ -55,7 +55,12 @@ def get_cutoff_query(
     if year is not None:
         stmt = stmt.where(Cutoff.year == year)
     if round_number is not None:
-        stmt = stmt.where(CapRound.round_number == round_number)
+        round_str = str(round_number).strip()
+        round_nums = [int(r.strip()) for r in round_str.split(',') if r.strip().isdigit()]
+        if len(round_nums) == 1:
+            stmt = stmt.where(CapRound.round_number == round_nums[0])
+        elif len(round_nums) > 1:
+            stmt = stmt.where(CapRound.round_number.in_(round_nums))
     if cap_round_id is not None:
         stmt = stmt.where(Cutoff.cap_round_id == cap_round_id)
         
@@ -105,28 +110,48 @@ def get_cutoff_query(
 
     cat_handled_gender = False
     if category_code:
-        cat = category_code.strip()
-        cat_upper = cat.upper()
-        if '%' in cat:
-            pat = cat if cat.endswith('%') else f"{cat}%"
-            stmt = stmt.where(Cutoff.category_code.ilike(pat))
-        elif cat_upper in ['OPEN', 'OBC', 'SC', 'ST', 'VJ', 'NT1', 'NT2', 'NT3', 'SEBC']:
-            # Bare caste category passed without gender prefix
-            if gender and gender.strip().lower() in ['ladies', 'l', 'female']:
-                stmt = stmt.where(Cutoff.category_code.ilike(f"L{cat_upper}%"))
-                cat_handled_gender = True
-            elif gender and gender.strip().lower() in ['general', 'g', 'male']:
-                stmt = stmt.where(Cutoff.category_code.ilike(f"G{cat_upper}%"))
-                cat_handled_gender = True
-            else:
-                stmt = stmt.where(
-                    or_(
-                        Cutoff.category_code.ilike(f"G{cat_upper}%"),
-                        Cutoff.category_code.ilike(f"L{cat_upper}%")
+        cat_items = [c.strip() for c in category_code.split(',') if c.strip()]
+        if len(cat_items) == 1:
+            cat = cat_items[0]
+            cat_upper = cat.upper()
+            if '%' in cat:
+                pat = cat if cat.endswith('%') else f"{cat}%"
+                stmt = stmt.where(Cutoff.category_code.ilike(pat))
+            elif cat_upper in ['OPEN', 'OBC', 'SC', 'ST', 'VJ', 'NT1', 'NT2', 'NT3', 'SEBC']:
+                # Bare caste category passed without gender prefix
+                if gender and gender.strip().lower() in ['ladies', 'l', 'female']:
+                    stmt = stmt.where(Cutoff.category_code.ilike(f"L{cat_upper}%"))
+                    cat_handled_gender = True
+                elif gender and gender.strip().lower() in ['general', 'g', 'male']:
+                    stmt = stmt.where(Cutoff.category_code.ilike(f"G{cat_upper}%"))
+                    cat_handled_gender = True
+                else:
+                    stmt = stmt.where(
+                        or_(
+                            Cutoff.category_code.ilike(f"G{cat_upper}%"),
+                            Cutoff.category_code.ilike(f"L{cat_upper}%")
+                        )
                     )
-                )
-        else:
-            stmt = stmt.where(Cutoff.category_code.ilike(f"{cat}%"))
+            else:
+                stmt = stmt.where(Cutoff.category_code.ilike(f"{cat}%"))
+        elif len(cat_items) > 1:
+            cat_conds = []
+            for cat in cat_items:
+                cat_upper = cat.upper()
+                if '%' in cat:
+                    pat = cat if cat.endswith('%') else f"{cat}%"
+                    cat_conds.append(Cutoff.category_code.ilike(pat))
+                elif cat_upper in ['OPEN', 'OBC', 'SC', 'ST', 'VJ', 'NT1', 'NT2', 'NT3', 'SEBC']:
+                    cat_conds.append(
+                        or_(
+                            Cutoff.category_code.ilike(f"G{cat_upper}%"),
+                            Cutoff.category_code.ilike(f"L{cat_upper}%")
+                        )
+                    )
+                else:
+                    cat_conds.append(Cutoff.category_code.ilike(f"{cat}%"))
+            stmt = stmt.where(or_(*cat_conds))
+            cat_handled_gender = True
 
     if gender and not cat_handled_gender:
         g = gender.strip().lower()
@@ -227,7 +252,7 @@ def list_cutoffs(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=500),
     year: Optional[int] = None,
-    round_number: Optional[int] = None,
+    round_number: Optional[str] = None,
     cap_round_id: Optional[int] = None,
     college: Optional[str] = None,
     college_code: Optional[str] = None,
@@ -322,7 +347,7 @@ def list_cutoffs(
 @router.get("/export")
 def export_cutoffs(
     year: Optional[int] = None,
-    round_number: Optional[int] = None,
+    round_number: Optional[str] = None,
     cap_round_id: Optional[int] = None,
     college: Optional[str] = None,
     college_code: Optional[str] = None,

@@ -48,6 +48,8 @@ export const SearchHistoryPage: React.FC = () => {
     if (item.filters.year) params.set('year', item.filters.year);
     if (item.filters.round) params.set('round', item.filters.round);
     if (item.filters.percentile) params.set('percentile', item.filters.percentile);
+    if (item.filters.rank) params.set('rank', item.filters.rank);
+    if (item.filters.scoreMode) params.set('scoreMode', item.filters.scoreMode);
 
     navigate(`/search?${params.toString()}`);
   };
@@ -184,6 +186,12 @@ export const SearchHistoryPage: React.FC = () => {
                   {item.filters.percentile && (
                     <span className="text-xs font-medium font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-100">
                       Score: ≤ {Number(item.filters.percentile).toFixed(2)}%
+                    </span>
+                  )}
+
+                  {item.filters.rank && (
+                    <span className="text-xs font-medium font-mono px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-100">
+                      Rank: #{Number(item.filters.rank).toLocaleString()}
                     </span>
                   )}
 

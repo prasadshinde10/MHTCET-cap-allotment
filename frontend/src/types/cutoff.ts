@@ -30,7 +30,7 @@ export interface CutoffFilters {
   page?: number;
   page_size?: number;
   year?: number;
-  round_number?: number;
+  round_number?: number | string;
   cap_round_id?: number;
   college?: string;
   college_code?: string;

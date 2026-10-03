@@ -72,13 +72,83 @@ A complete Python toolkit for parsing MHT-CET Engineering Cutoff PDF data across
 
 ## Installation & Setup
 
+### 1. Prerequisites
+- **Python 3.10+**
+- **Node.js 18+** & **npm**
+
+---
+
+## Running the Web Application Manually
+
+### 🪟 Windows (PowerShell / Command Prompt)
+
+#### Step 1: Start Backend (FastAPI Server)
+Open a new PowerShell / Command Prompt terminal:
+```powershell
+# Navigate to backend directory
+cd backend
+
+# Install Python dependencies (first time only)
+pip install -r requirements.txt
+
+# Start backend server
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+- **Backend API**: [http://127.0.0.1:8000](http://127.0.0.1:8000)
+- **Interactive Swagger Docs**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- **Health Endpoint**: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health)
+
+#### Step 2: Start Frontend (Vite / React Dev Server)
+Open a second PowerShell / Command Prompt terminal:
+```powershell
+# Navigate to frontend directory
+cd frontend
+
+# Install Node dependencies (first time only)
+npm install
+
+# Start frontend development server
+npm run dev
+```
+- **Frontend App**: [http://localhost:3000](http://localhost:3000)
+
+---
+
+### 🐧 Linux / macOS (Bash / Zsh)
+
+#### Step 1: Start Backend (FastAPI Server)
+Open a new terminal window:
 ```bash
-pip install beautifulsoup4 requests pypdf PyMuPDF
+# Navigate to backend directory
+cd backend
+
+# Optional: Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Start backend server
+python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+#### Step 2: Start Frontend (Vite / React Dev Server)
+Open a second terminal window:
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start frontend development server
+npm run dev
 ```
 
 ---
 
-## Usage
+## Data Scraping & Utility Scripts
 
 ### 1. Build Database & Web Scrape Profiles
 ```bash

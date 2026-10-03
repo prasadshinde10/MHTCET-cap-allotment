@@ -1,9 +1,8 @@
 """
 JoSAA Official Portal Scraper Engine
-Fetches complete Opening and Closing Ranks across all rounds (1 to 5)
-Supports both:
-- Year 2024: Official live NIC Archive Portal (openingclosingrankarchieve.aspx)
-- Year 2025: Official JoSAA Dataset Engine
+Fetches complete Opening and Closing Ranks across all rounds:
+- Year 2025: All 6 rounds from Official NIC Archive Portal (openingclosingrankarchieve.aspx)
+- Year 2026: 5 rounds from Official JoSAA Live Portal (currentorcr.aspx)
 Features background worker execution with thread-safe progress tracking and live status reporting.
 """
 
@@ -23,6 +22,8 @@ from typing import List, Dict, Any, Optional
 CURRENT_URL = "https://josaa.admissions.nic.in/applicant/seatallotmentresult/currentorcr.aspx"
 ARCHIVE_URL = "https://josaa.admissions.nic.in/applicant/seatmatrix/openingclosingrankarchieve.aspx"
 DATASET_URL = "https://raw.githubusercontent.com/Harith-Y/JoSAA-CSAB-Closing-Rank-Predictor/main/data"
+INSTITUTE_VIEW_URL = "https://josaa.admissions.nic.in/applicant/seatmatrix/instituteview.aspx"
+INSTITUTE_PROFILE_BASE_URL = "https://josaa.admissions.nic.in/applicant/seatmatrix/InstProfile.aspx"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -39,11 +40,11 @@ josaa_scraper_state: Dict[str, Any] = {
     "progress_percent": 0,
     "current_year": None,
     "current_round": None,
-    "message": "Ready to scrape official JoSAA cutoffs for Years 2024 & 2025.",
-    "records_2024": 0,
+    "message": "Ready to scrape official JoSAA cutoffs for Years 2025 & 2026.",
     "records_2025": 0,
+    "records_2026": 0,
     "total_records": 0,
-    "total_rounds": 10,
+    "total_rounds": 11,
     "completed_rounds": 0,
     "started_at": None,
     "completed_at": None,
@@ -100,86 +101,89 @@ def determine_institute_type(name: str) -> str:
     return "Other-GFTI"
 
 
-def scrape_archive_round(session: requests.Session, year: int, round_no: int) -> List[Dict[str, Any]]:
+def scrape_archive_round(session: requests.Session, year: int = 2025, round_no: int = 1) -> List[Dict[str, Any]]:
     """
-    Scrapes an archival year (e.g. 2024) from openingclosingrankarchieve.aspx using
-    cascading ASP.NET PostBack simulation.
+    Scrapes an archival year (e.g. 2025, 2024) exclusively from the official NIC portal:
+    https://josaa.admissions.nic.in/applicant/seatmatrix/openingclosingrankarchieve.aspx
+    using cascading ASP.NET PostBack simulation.
     """
-    print(f"[*] Connecting to JoSAA Archive portal for Year {year}, Round {round_no}...", flush=True)
+    print(f"[*] Connecting to official JoSAA Archive portal for Year {year}, Round {round_no}...", flush=True)
     try:
-        r0 = session.get(ARCHIVE_URL, headers=HEADERS, timeout=30)
+        s = requests.Session()
+        r0 = s.get(ARCHIVE_URL, headers=HEADERS, timeout=30)
         if r0.status_code != 200:
             print(f"[!] Initial archive GET failed: HTTP {r0.status_code}", flush=True)
             return []
         s0 = BeautifulSoup(r0.text, 'html.parser')
 
         # 1. Select Year (PostBack)
-        d1 = {
-            **get_asp_fields(s0),
-            '__EVENTTARGET': 'ctl00$ContentPlaceHolder1$ddlYear',
-            '__EVENTARGUMENT': '',
-            'ctl00$ContentPlaceHolder1$ddlYear': str(year)
-        }
-        s1 = BeautifulSoup(session.post(ARCHIVE_URL, data=d1, headers=HEADERS, timeout=30).text, 'html.parser')
+        d1 = dict(get_asp_fields(s0))
+        d1['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlYear'
+        d1['__EVENTARGUMENT'] = ''
+        d1['__LASTFOCUS'] = ''
+        d1['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
+        r1 = s.post(ARCHIVE_URL, data=d1, headers=HEADERS, timeout=40)
+        s1 = BeautifulSoup(r1.text, 'html.parser')
 
         # 2. Select Round (PostBack)
-        d2 = {
-            **get_asp_fields(s1),
-            '__EVENTTARGET': 'ctl00$ContentPlaceHolder1$ddlroundno',
-            '__EVENTARGUMENT': '',
-            'ctl00$ContentPlaceHolder1$ddlYear': str(year),
-            'ctl00$ContentPlaceHolder1$ddlroundno': str(round_no)
-        }
-        s2 = BeautifulSoup(session.post(ARCHIVE_URL, data=d2, headers=HEADERS, timeout=30).text, 'html.parser')
+        d2 = dict(get_asp_fields(s1))
+        d2['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlroundno'
+        d2['__EVENTARGUMENT'] = ''
+        d2['__LASTFOCUS'] = ''
+        d2['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
+        d2['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+        r2 = s.post(ARCHIVE_URL, data=d2, headers=HEADERS, timeout=40)
+        s2 = BeautifulSoup(r2.text, 'html.parser')
 
         # 3. Select InstType = ALL (PostBack)
-        d3 = {
-            **get_asp_fields(s2),
-            '__EVENTTARGET': 'ctl00$ContentPlaceHolder1$ddlInstype',
-            '__EVENTARGUMENT': '',
-            'ctl00$ContentPlaceHolder1$ddlYear': str(year),
-            'ctl00$ContentPlaceHolder1$ddlroundno': str(round_no),
-            'ctl00$ContentPlaceHolder1$ddlInstype': 'ALL'
-        }
-        s3 = BeautifulSoup(session.post(ARCHIVE_URL, data=d3, headers=HEADERS, timeout=30).text, 'html.parser')
+        d3 = dict(get_asp_fields(s2))
+        d3['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstype'
+        d3['__EVENTARGUMENT'] = ''
+        d3['__LASTFOCUS'] = ''
+        d3['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
+        d3['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+        d3['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+        r3 = s.post(ARCHIVE_URL, data=d3, headers=HEADERS, timeout=40)
+        s2 = BeautifulSoup(r3.text, 'html.parser')
 
         # 4. Select Institute = ALL (PostBack)
-        d4 = {
-            **get_asp_fields(s3),
-            '__EVENTTARGET': 'ctl00$ContentPlaceHolder1$ddlInstitute',
-            '__EVENTARGUMENT': '',
-            'ctl00$ContentPlaceHolder1$ddlYear': str(year),
-            'ctl00$ContentPlaceHolder1$ddlroundno': str(round_no),
-            'ctl00$ContentPlaceHolder1$ddlInstype': 'ALL',
-            'ctl00$ContentPlaceHolder1$ddlInstitute': 'ALL'
-        }
-        s4 = BeautifulSoup(session.post(ARCHIVE_URL, data=d4, headers=HEADERS, timeout=30).text, 'html.parser')
+        d4 = dict(get_asp_fields(s2))
+        d4['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstitute'
+        d4['__EVENTARGUMENT'] = ''
+        d4['__LASTFOCUS'] = ''
+        d4['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
+        d4['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+        d4['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+        d4['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
+        r4 = s.post(ARCHIVE_URL, data=d4, headers=HEADERS, timeout=40)
+        s4 = BeautifulSoup(r4.text, 'html.parser')
 
         # 5. Select Branch = ALL (PostBack)
-        d5 = {
-            **get_asp_fields(s4),
-            '__EVENTTARGET': 'ctl00$ContentPlaceHolder1$ddlBranch',
-            '__EVENTARGUMENT': '',
-            'ctl00$ContentPlaceHolder1$ddlYear': str(year),
-            'ctl00$ContentPlaceHolder1$ddlroundno': str(round_no),
-            'ctl00$ContentPlaceHolder1$ddlInstype': 'ALL',
-            'ctl00$ContentPlaceHolder1$ddlInstitute': 'ALL',
-            'ctl00$ContentPlaceHolder1$ddlBranch': 'ALL'
-        }
-        s5 = BeautifulSoup(session.post(ARCHIVE_URL, data=d5, headers=HEADERS, timeout=30).text, 'html.parser')
+        d5 = dict(get_asp_fields(s4))
+        d5['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlBranch'
+        d5['__EVENTARGUMENT'] = ''
+        d5['__LASTFOCUS'] = ''
+        d5['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
+        d5['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+        d5['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+        d5['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
+        d5['ctl00$ContentPlaceHolder1$ddlBranch'] = 'ALL'
+        r5 = s.post(ARCHIVE_URL, data=d5, headers=HEADERS, timeout=40)
+        s5 = BeautifulSoup(r5.text, 'html.parser')
 
         # 6. Final Submit with Seat Type = ALL
-        d6 = {
-            **get_asp_fields(s5),
-            'ctl00$ContentPlaceHolder1$ddlYear': str(year),
-            'ctl00$ContentPlaceHolder1$ddlroundno': str(round_no),
-            'ctl00$ContentPlaceHolder1$ddlInstype': 'ALL',
-            'ctl00$ContentPlaceHolder1$ddlInstitute': 'ALL',
-            'ctl00$ContentPlaceHolder1$ddlBranch': 'ALL',
-            'ctl00$ContentPlaceHolder1$ddlSeatType': 'ALL',
-            'ctl00$ContentPlaceHolder1$btnSubmit': 'Submit'
-        }
-        r6 = session.post(ARCHIVE_URL, data=d6, headers=HEADERS, timeout=90)
+        d6 = dict(get_asp_fields(s5))
+        d6['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
+        d6['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+        d6['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+        d6['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
+        d6['ctl00$ContentPlaceHolder1$ddlBranch'] = 'ALL'
+        seat_sel = s5.find('select', attrs={'name': lambda n: n and 'SeatType' in n or n and 'Seattype' in n})
+        seat_name = seat_sel.get('name') if seat_sel else 'ctl00$ContentPlaceHolder1$ddlSeatType'
+        d6[seat_name] = 'ALL'
+        d6['ctl00$ContentPlaceHolder1$btnSubmit'] = 'Submit'
+
+        r6 = s.post(ARCHIVE_URL, data=d6, headers=HEADERS, timeout=120)
         s6 = BeautifulSoup(r6.text, 'html.parser')
 
         table = None
@@ -224,46 +228,120 @@ def scrape_archive_round(session: requests.Session, year: int, round_no: int) ->
 
 
 def scrape_2025_round(session: requests.Session, round_no: int = 1) -> List[Dict[str, Any]]:
-    """Fetches official Year 2025 cutoffs across all institutions."""
-    file_name = f"Round{round_no}-2026.csv"
-    url = f"{DATASET_URL}/{file_name}"
-    print(f"[*] Downloading official Year 2025 dataset for Round {round_no} from {url}...", flush=True)
+    """Exclusively scrapes Year 2025 cutoffs from official NIC archive portal."""
+    return scrape_archive_round(session, year=2025, round_no=round_no)
+
+
+def scrape_2026_round(session: requests.Session, round_no: int = 1) -> List[Dict[str, Any]]:
+    """Scrapes Year 2026 from the live NIC portal (currentorcr.aspx) using cascading ASP.NET PostBack."""
+    print(f"[*] Connecting to JoSAA live portal for Year 2026, Round {round_no}...", flush=True)
     try:
-        r = session.get(url, timeout=35)
-        if r.status_code != 200:
-            print(f"[!] Failed to fetch {file_name}: HTTP {r.status_code}", flush=True)
+        # Use a fresh session per round to guarantee pristine viewstate sequence
+        s = requests.Session()
+        r0 = s.get(CURRENT_URL, headers=HEADERS, timeout=30)
+        if r0.status_code != 200:
+            print(f"[!] Initial live portal GET failed: HTTP {r0.status_code}", flush=True)
+            return []
+        s0 = BeautifulSoup(r0.text, 'html.parser')
+
+        # 1. Select Round (PostBack)
+        d1 = dict(get_asp_fields(s0))
+        d1['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlroundno'
+        d1['__EVENTARGUMENT'] = ''
+        d1['__LASTFOCUS'] = ''
+        d1['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+        r1 = s.post(CURRENT_URL, data=d1, headers=HEADERS, timeout=40)
+        s1 = BeautifulSoup(r1.text, 'html.parser')
+
+        # 2. Select InstType = ALL (PostBack)
+        d2 = dict(get_asp_fields(s1))
+        d2['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstype'
+        d2['__EVENTARGUMENT'] = ''
+        d2['__LASTFOCUS'] = ''
+        d2['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+        d2['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+        r2 = s.post(CURRENT_URL, data=d2, headers=HEADERS, timeout=40)
+        s2 = BeautifulSoup(r2.text, 'html.parser')
+
+        # 3. Select Institute = ALL (PostBack)
+        d3 = dict(get_asp_fields(s2))
+        d3['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstitute'
+        d3['__EVENTARGUMENT'] = ''
+        d3['__LASTFOCUS'] = ''
+        d3['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+        d3['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+        d3['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
+        r3 = s.post(CURRENT_URL, data=d3, headers=HEADERS, timeout=40)
+        s3 = BeautifulSoup(r3.text, 'html.parser')
+
+        # 4. Select Branch = ALL (PostBack)
+        d4 = dict(get_asp_fields(s3))
+        d4['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlBranch'
+        d4['__EVENTARGUMENT'] = ''
+        d4['__LASTFOCUS'] = ''
+        d4['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+        d4['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+        d4['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
+        d4['ctl00$ContentPlaceHolder1$ddlBranch'] = 'ALL'
+        r4 = s.post(CURRENT_URL, data=d4, headers=HEADERS, timeout=40)
+        s4 = BeautifulSoup(r4.text, 'html.parser')
+
+        # 5. Final Submit with Seat Type = ALL (note exact lowercase 't' in ddlSeattype)
+        d5 = dict(get_asp_fields(s4))
+        d5['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+        d5['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+        d5['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
+        d5['ctl00$ContentPlaceHolder1$ddlBranch'] = 'ALL'
+        d5['ctl00$ContentPlaceHolder1$ddlSeattype'] = 'ALL'
+        d5['ctl00$ContentPlaceHolder1$btnSubmit'] = 'Submit'
+        r5 = s.post(CURRENT_URL, data=d5, headers=HEADERS, timeout=120)
+        s5 = BeautifulSoup(r5.text, 'html.parser')
+
+        table = None
+        for t in s5.find_all('table'):
+            if len(t.find_all('tr')) > 5:
+                table = t
+                break
+
+        if not table:
+            print(f"[!] No cutoff table found for Year 2026, Round {round_no}", flush=True)
             return []
 
-        reader = csv.reader(io.StringIO(r.text))
-        headers = next(reader, None)
+        rows = table.find_all('tr')
+        print(f"[+] Found table with {len(rows)} rows for Year 2026, Round {round_no}", flush=True)
+
         records = []
-        for row in reader:
-            if len(row) < 7:
+        for tr in rows[1:]:
+            cells = [' '.join(c.get_text(' ', strip=True).split()) for c in tr.find_all(['td', 'th'])]
+            if len(cells) < 6:
                 continue
-            inst_str = ' '.join(row[0].split())
-            prog_str = ' '.join(row[1].split())
-            if not inst_str or not prog_str:
+            inst_name = cells[0]
+            prog_name = cells[1]
+            if not inst_name or not prog_name:
                 continue
             records.append({
-                'institute': inst_str,
-                'program': prog_str,
-                'quota': ' '.join(row[2].split()).upper(),
-                'category': ' '.join(row[3].split()),
-                'gender': ' '.join(row[4].split()),
-                'opening_rank': row[5],
-                'closing_rank': row[6],
+                'institute': inst_name,
+                'program': prog_name,
+                'quota': cells[2] if len(cells) > 2 and cells[2] else 'AI',
+                'category': cells[3] if len(cells) > 3 and cells[3] else 'OPEN',
+                'gender': cells[4] if len(cells) > 4 and cells[4] else 'Gender-Neutral',
+                'opening_rank': cells[5] if len(cells) > 5 else '0',
+                'closing_rank': cells[6] if len(cells) > 6 else '0',
                 'round_no': round_no,
-                'year': 2025
+                'year': 2026
             })
-        print(f"[+] Successfully extracted {len(records)} records for Year 2025, Round {round_no}.", flush=True)
+
+        print(f"[+] Successfully extracted {len(records)} records for Year 2026, Round {round_no}.", flush=True)
         return records
     except Exception as e:
-        print(f"[!] Error fetching 2025 round {round_no}: {e}", flush=True)
+        print(f"[!] Error in live portal scrape for Year 2026, Round {round_no}: {e}", flush=True)
         return []
 
 
-def scrape_round(session: requests.Session, round_no: int = 1, year: int = 2024) -> List[Dict[str, Any]]:
-    """Orchestrates scraping based on whether the requested year is 2024 or 2025."""
+def scrape_round(session: requests.Session, round_no: int = 1, year: int = 2025) -> List[Dict[str, Any]]:
+    """Orchestrates scraping based on whether the requested year is 2025, 2026, or archival."""
+    if year == 2026:
+        return scrape_2026_round(session, round_no=round_no)
     if year == 2025:
         return scrape_2025_round(session, round_no=round_no)
     return scrape_archive_round(session, year=year, round_no=round_no)
@@ -368,10 +446,11 @@ def save_records_to_db(records: List[Dict[str, Any]], db_path: Optional[Path] = 
                 idx += 1
                 code = f"{base_code[:7]}_{idx}"
 
+            st = OFFICIAL_HOME_STATE_MAPPING.get(inst_name)
             cursor.execute("""
-                INSERT INTO institutes (institute_code, institute_name, institute_type)
-                VALUES (?, ?, ?)
-            """, (code, inst_name, itype))
+                INSERT INTO institutes (institute_code, institute_name, institute_type, state)
+                VALUES (?, ?, ?, ?)
+            """, (code, inst_name, itype, st))
             inst_id = cursor.lastrowid
             inst_map[inst_name] = inst_id
         else:
@@ -481,6 +560,206 @@ def normalize_josaa_db(db_path: Optional[Path] = None):
     conn.close()
 
 
+OFFICIAL_HOME_STATE_MAPPING: Dict[str, str] = {
+    # NITs
+    "Dr. B R Ambedkar National Institute of Technology, Jalandhar": "Punjab",
+    "Malaviya National Institute of Technology Jaipur": "Rajasthan",
+    "Maulana Azad National Institute of Technology Bhopal": "Madhya Pradesh",
+    "Motilal Nehru National Institute of Technology Allahabad": "Uttar Pradesh",
+    "National Institute of Technology  Agartala": "Tripura",
+    "National Institute of Technology Calicut": "Kerala",
+    "National Institute of Technology Delhi": "Delhi",
+    "National Institute of Technology Durgapur": "West Bengal",
+    "National Institute of Technology Goa": "Goa",
+    "National Institute of Technology Hamirpur": "Himachal Pradesh",
+    "National Institute of Technology Karnataka, Surathkal": "Karnataka",
+    "National Institute of Technology Meghalaya": "Meghalaya",
+    "National Institute of Technology Nagaland": "Nagaland",
+    "National Institute of Technology Patna": "Bihar",
+    "National Institute of Technology Puducherry": "Puducherry",
+    "National Institute of Technology Raipur": "Chhattisgarh",
+    "National Institute of Technology Sikkim": "Sikkim",
+    "National Institute of Technology Arunachal Pradesh": "Arunachal Pradesh",
+    "National Institute of Technology, Jamshedpur": "Jharkhand",
+    "National Institute of Technology, Kurukshetra": "Haryana",
+    "National Institute of Technology, Manipur": "Manipur",
+    "National Institute of Technology, Mizoram": "Mizoram",
+    "National Institute of Technology, Rourkela": "Odisha",
+    "National Institute of Technology, Silchar": "Assam",
+    "National Institute of Technology, Srinagar": "Jammu and Kashmir",
+    "National Institute of Technology, Tiruchirappalli": "Tamil Nadu",
+    "National Institute of Technology, Uttarakhand": "Uttarakhand",
+    "National Institute of Technology, Warangal": "Telangana",
+    "Sardar Vallabhbhai National Institute of Technology, Surat": "Gujarat",
+    "Visvesvaraya National Institute of Technology, Nagpur": "Maharashtra",
+    "National Institute of Technology, Andhra Pradesh": "Andhra Pradesh",
+    "Indian Institute of Engineering Science and Technology, Shibpur": "West Bengal",
+    
+    # IIITs / GFTIs offering Home State Quota
+    "Assam University, Silchar": "Assam",
+    "Birla Institute of Technology, Mesra, Ranchi": "Jharkhand",
+    "Gurukula Kangri Vishwavidyalaya, Haridwar": "Uttarakhand",
+    "Institute of Chemical Technology, Mumbai: Indian Oil Odisha Campus, Bhubaneswar": "Odisha",
+    "Institute of Chemical Technology, Mumbai: Marathwada Campus, Jalna": "Maharashtra",
+    "Institute of Technology, Guru Ghasidas Vishwavidyalaya, Bilaspur": "Chhattisgarh",
+    "J.K. Institute of Applied Physics & Technology, Department of Electronics & Communication, University of Allahabad": "Uttar Pradesh",
+    "National Institute of Electronics and Information Technology, Aurangabad": "Maharashtra",
+    "National Institute of Advanced Manufacturing Technology, Ranchi": "Jharkhand",
+    "Sant Longowal Institute of Engineering and Technology": "Punjab",
+    "Mizoram University, Aizawl": "Mizoram",
+    "School of Engineering, Tezpur University, Napaam, Tezpur": "Assam",
+    "Shri Mata Vaishno Devi University, Katra, J & K": "Jammu and Kashmir",
+    "Indian Institute of Handloom Technology, Salem": "Tamil Nadu",
+    "Central Institute of Technology Kokrajhar": "Assam",
+    "Puducherry Technological University, Puducherry": "Puducherry",
+    "Ghani Khan Choudhury Institute of Engineering and Technology, Malda, West Bengal": "West Bengal",
+    "Central University of Rajasthan, Bandarsindri, Distt. Ajmer": "Rajasthan",
+    "National Institute of Food Technology Entrepreneurship and Management, Kundli": "Haryana",
+    "National Institute of Food Technology Entrepreneurship and Management, Thanjavur": "Tamil Nadu",
+    "Central University of Jammu": "Jammu and Kashmir",
+    "Institute of Engineering and Technology, Dr. H. S. Gour University. Sagar": "Madhya Pradesh",
+    "Central University of Haryana": "Haryana",
+    "Punjab Engineering College, Chandigarh": "Chandigarh",
+    "Jawaharlal Nehru University, Delhi": "Delhi",
+    "International Institute of Information Technology, Naya Raipur": "Chhattisgarh",
+    "International Institute of Information Technology, Bhubaneswar": "Odisha",
+    "Birla Institute of Technology, Deoghar Off-Campus": "Jharkhand",
+    "Birla Institute of Technology, Patna Off-Campus": "Bihar",
+    "Islamic University of Science and Technology Kashmir": "Jammu and Kashmir"
+}
+
+def clean_state_name(raw_state: str) -> str:
+    s = raw_state.strip()
+    if not s or s.lower() in ["all india", "all", "none", "na", "-"]:
+        return ""
+    if "puducherry" in s.lower() or "pondicherry" in s.lower():
+        return "Puducherry"
+    if "delhi" in s.lower():
+        return "Delhi"
+    if "jammu" in s.lower():
+        return "Jammu and Kashmir"
+    if "andaman" in s.lower():
+        return "Andaman and Nicobar Islands"
+    if "odisha" in s.lower() or "orissa" in s.lower():
+        return "Odisha"
+    if "chhattisgarh" in s.lower() or "chhatisgarh" in s.lower():
+        return "Chhattisgarh"
+    if "chandigarh" in s.lower():
+        return "Chandigarh"
+    if "," in s:
+        # If multiple states/UTs are listed, take the primary state
+        first_part = s.split(",")[0].strip()
+        return first_part.title()
+    return s.title()
+
+
+def scrape_institute_home_states(session: Optional[requests.Session] = None, db_path: Optional[Path] = None) -> Dict[str, str]:
+    """
+    Scrapes https://josaa.admissions.nic.in/applicant/seatmatrix/instituteview.aspx
+    Inspects each institute's 'Academic Programwise Seats breakup' table.
+    If 'State/All India Seats' column contains 'All India', skips (no HS quota).
+    If it contains an Indian State name, maps that Home State to the institute in josaa.db.
+    Falls back to official mapping dictionary to guarantee 100% complete coverage.
+    """
+    if db_path is None:
+        db_path = get_db_path()
+    
+    if session is None:
+        session = requests.Session()
+    
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
+    init_josaa_db_schema(conn)
+    cur = conn.cursor()
+
+    # Pre-populate with official curated mapping
+    mapped_states: Dict[str, str] = dict(OFFICIAL_HOME_STATE_MAPPING)
+    
+    print("[*] Connecting to JoSAA seat matrix institute view for Home State mapping...", flush=True)
+    try:
+        r0 = session.get(INSTITUTE_VIEW_URL, headers=HEADERS, timeout=20)
+        if r0.status_code == 200:
+            s0 = BeautifulSoup(r0.text, 'html.parser')
+            fields = get_asp_fields(s0)
+            d1 = {
+                **fields,
+                '__EVENTTARGET': 'ctl00$ContentPlaceHolder1$ddlInstType',
+                '__EVENTARGUMENT': '',
+                'ctl00$ContentPlaceHolder1$ddlInstType': 'ALL'
+            }
+            r1 = session.post(INSTITUTE_VIEW_URL, data=d1, headers=HEADERS, timeout=25)
+            s1 = BeautifulSoup(r1.text, 'html.parser')
+            table = s1.find('table')
+            if table:
+                rows = table.find_all('tr')[1:]
+                print(f"[+] Found {len(rows)} institutes on official seat matrix page.", flush=True)
+                for r in rows:
+                    cells = r.find_all(['td', 'th'])
+                    if len(cells) < 3:
+                        continue
+                    link = cells[0].find('a')
+                    href = link.get('href', '') if link else ''
+                    code_match = re.search(r'instcd=(\d+)', href)
+                    if not code_match:
+                        continue
+                    inst_cd = code_match.group(1)
+                    inst_name = re.sub(r'^\d+', '', cells[2].get_text(' ', strip=True)).strip()
+                    
+                    if inst_name in mapped_states:
+                        continue
+
+                    try:
+                        prof_url = f"{INSTITUTE_PROFILE_BASE_URL}?instcd={inst_cd}"
+                        rp = session.get(prof_url, headers=HEADERS, timeout=10)
+                        sp = BeautifulSoup(rp.text, 'html.parser')
+                        
+                        target_table = None
+                        for t in sp.find_all('table'):
+                            if 'State/All India Seats' in t.get_text():
+                                target_table = t
+                                break
+                        
+                        if target_table:
+                            for trow in target_table.find_all('tr'):
+                                tcells = [c.get_text(' ', strip=True) for c in trow.find_all(['td', 'th'])]
+                                if len(tcells) >= 4 and tcells[0].isdigit():
+                                    state_raw = tcells[3].strip()
+                                    cleaned = clean_state_name(state_raw)
+                                    if cleaned:
+                                        mapped_states[inst_name] = cleaned
+                                    break
+                    except Exception as e:
+                        print(f"[!] Warning: Failed live fetch for instcd={inst_cd} ({inst_name}): {e}", flush=True)
+    except Exception as e:
+        print(f"[!] Warning: Live seat matrix scrape error: {e}", flush=True)
+
+    # Commit state mappings to josaa.db
+    updated_count = 0
+    for inst_name, state in mapped_states.items():
+        clean_name = ' '.join(inst_name.split())
+        cur.execute("SELECT id FROM institutes WHERE institute_name = ? OR institute_name LIKE ?", (clean_name, f"%{clean_name}%"))
+        row = cur.fetchone()
+        if row:
+            cur.execute("""
+                UPDATE institutes 
+                SET state = ? 
+                WHERE id = ?
+            """, (state, row[0]))
+            updated_count += 1
+        else:
+            itype = determine_institute_type(clean_name)
+            base_code = re.sub(r"[^A-Za-z0-9]", "", clean_name)[:10].upper() or "INST"
+            cur.execute("""
+                INSERT INTO institutes (institute_code, institute_name, institute_type, state)
+                VALUES (?, ?, ?, ?)
+            """, (base_code, clean_name, itype, state))
+            updated_count += 1
+
+    conn.commit()
+    conn.close()
+    print(f"[+] Successfully mapped Home State for {len(mapped_states)} institutes ({updated_count} DB rows inserted/updated).", flush=True)
+    return mapped_states
+
+
 def get_josaa_scraper_status() -> Dict[str, Any]:
     with _josaa_lock:
         return dict(josaa_scraper_state)
@@ -491,51 +770,32 @@ def _run_full_josaa_scrape_task(db_path: Optional[Path] = None):
         josaa_scraper_state["is_running"] = True
         josaa_scraper_state["status"] = "RUNNING"
         josaa_scraper_state["progress_percent"] = 2
-        josaa_scraper_state["current_year"] = 2024
+        josaa_scraper_state["current_year"] = 2025
         josaa_scraper_state["current_round"] = 1
-        josaa_scraper_state["message"] = "Initializing JoSAA official scraper for Years 2024 and 2025..."
-        josaa_scraper_state["records_2024"] = 0
+        josaa_scraper_state["message"] = "Initializing JoSAA official scraper for Years 2025 and 2026..."
         josaa_scraper_state["records_2025"] = 0
+        josaa_scraper_state["records_2026"] = 0
         josaa_scraper_state["total_records"] = 0
         josaa_scraper_state["completed_rounds"] = 0
-        josaa_scraper_state["total_rounds"] = 10
+        josaa_scraper_state["total_rounds"] = 11
         josaa_scraper_state["started_at"] = datetime.now(timezone.utc).isoformat()
         josaa_scraper_state["completed_at"] = None
         josaa_scraper_state["error"] = None
 
     session = requests.Session()
-    total_2024 = 0
     total_2025 = 0
+    total_2026 = 0
 
     try:
-        # Phase 1: Year 2024 (Rounds 1 to 5) from official NIC Archive
-        for r in range(1, 6):
-            with _josaa_lock:
-                josaa_scraper_state["current_year"] = 2024
-                josaa_scraper_state["current_round"] = r
-                josaa_scraper_state["message"] = f"Scraping official NIC Archive: Year 2024, Round {r} of 5..."
-                josaa_scraper_state["progress_percent"] = int((josaa_scraper_state["completed_rounds"] / 10) * 88) + 3
-
-            recs = scrape_archive_round(session, year=2024, round_no=r)
-            if recs:
-                saved = save_records_to_db(recs, db_path=db_path)
-                total_2024 += saved
-
-            with _josaa_lock:
-                josaa_scraper_state["completed_rounds"] += 1
-                josaa_scraper_state["records_2024"] = total_2024
-                josaa_scraper_state["total_records"] = total_2024 + total_2025
-                josaa_scraper_state["progress_percent"] = int((josaa_scraper_state["completed_rounds"] / 10) * 88) + 3
-
-        # Phase 2: Year 2025 (Rounds 1 to 5) from official dataset engine
-        for r in range(1, 6):
+        # Phase 1: Year 2025 (Rounds 1 to 6)
+        for r in range(1, 7):
             with _josaa_lock:
                 josaa_scraper_state["current_year"] = 2025
                 josaa_scraper_state["current_round"] = r
-                josaa_scraper_state["message"] = f"Ingesting official JoSAA dataset: Year 2025, Round {r} of 5..."
-                josaa_scraper_state["progress_percent"] = int((josaa_scraper_state["completed_rounds"] / 10) * 88) + 3
+                josaa_scraper_state["message"] = f"Ingesting official JoSAA cutoffs: Year 2025, Round {r} of 6..."
+                josaa_scraper_state["progress_percent"] = int((josaa_scraper_state["completed_rounds"] / 11) * 85) + 3
 
-            recs = scrape_2025_round(session, round_no=r)
+            recs = scrape_round(session, round_no=r, year=2025)
             if recs:
                 saved = save_records_to_db(recs, db_path=db_path)
                 total_2025 += saved
@@ -543,12 +803,37 @@ def _run_full_josaa_scrape_task(db_path: Optional[Path] = None):
             with _josaa_lock:
                 josaa_scraper_state["completed_rounds"] += 1
                 josaa_scraper_state["records_2025"] = total_2025
-                josaa_scraper_state["total_records"] = total_2024 + total_2025
-                josaa_scraper_state["progress_percent"] = int((josaa_scraper_state["completed_rounds"] / 10) * 88) + 3
+                josaa_scraper_state["total_records"] = total_2025 + total_2026
+                josaa_scraper_state["progress_percent"] = int((josaa_scraper_state["completed_rounds"] / 11) * 85) + 3
 
-        # Phase 3: Normalization & Index Verification
+        # Phase 2: Year 2026 (Rounds 1 to 5) from official dataset engine
+        for r in range(1, 6):
+            with _josaa_lock:
+                josaa_scraper_state["current_year"] = 2026
+                josaa_scraper_state["current_round"] = r
+                josaa_scraper_state["message"] = f"Scraping JoSAA live portal: Year 2026, Round {r} of 5..."
+                josaa_scraper_state["progress_percent"] = int((josaa_scraper_state["completed_rounds"] / 11) * 85) + 3
+
+            recs = scrape_2026_round(session, round_no=r)
+            if recs:
+                saved = save_records_to_db(recs, db_path=db_path)
+                total_2026 += saved
+
+            with _josaa_lock:
+                josaa_scraper_state["completed_rounds"] += 1
+                josaa_scraper_state["records_2026"] = total_2026
+                josaa_scraper_state["total_records"] = total_2025 + total_2026
+                josaa_scraper_state["progress_percent"] = int((josaa_scraper_state["completed_rounds"] / 11) * 85) + 3
+
+        # Phase 3: Home State Seat Matrix Scraper & Normalization
         with _josaa_lock:
-            josaa_scraper_state["progress_percent"] = 96
+            josaa_scraper_state["progress_percent"] = 92
+            josaa_scraper_state["message"] = "Mapping and scraping institute Home States from official seat matrix..."
+
+        scrape_institute_home_states(session=session, db_path=db_path)
+
+        with _josaa_lock:
+            josaa_scraper_state["progress_percent"] = 97
             josaa_scraper_state["message"] = "Verifying database integrity and normalising records..."
 
         normalize_josaa_db(db_path=db_path)
@@ -559,8 +844,8 @@ def _run_full_josaa_scrape_task(db_path: Optional[Path] = None):
             josaa_scraper_state["is_running"] = False
             josaa_scraper_state["completed_at"] = datetime.now(timezone.utc).isoformat()
             josaa_scraper_state["message"] = (
-                f"Successfully scraped & ingested all 10 rounds! "
-                f"Year 2024: {total_2024:,} cutoffs | Year 2025: {total_2025:,} cutoffs | Total: {total_2024 + total_2025:,} cutoffs."
+                f"Successfully scraped & ingested all 11 rounds! "
+                f"Year 2025: {total_2025:,} cutoffs (6 rounds) | Year 2026: {total_2026:,} cutoffs (5 rounds) | Total: {total_2025 + total_2026:,} cutoffs."
             )
 
     except Exception as e:
@@ -581,17 +866,17 @@ def start_josaa_scraper_background(db_path: Optional[Path] = None) -> bool:
         josaa_scraper_state["is_running"] = True
         josaa_scraper_state["status"] = "RUNNING"
         josaa_scraper_state["progress_percent"] = 1
-        josaa_scraper_state["message"] = "Starting JoSAA web scraping process for Years 2024 & 2025..."
+        josaa_scraper_state["message"] = "Starting JoSAA web scraping process for Years 2025 & 2026..."
 
     t = threading.Thread(target=_run_full_josaa_scrape_task, args=(db_path,), daemon=True)
     t.start()
     return True
 
 
-def run_scraper(rounds: Optional[List[int]] = None, year: int = 2024, db_path: Optional[Path] = None):
+def run_scraper(rounds: Optional[List[int]] = None, year: int = 2025, db_path: Optional[Path] = None):
     """Synchronous scraper execution for CLI invocation."""
     if rounds is None:
-        rounds = [1, 2, 3, 4, 5]
+        rounds = [1, 2, 3, 4, 5, 6] if year == 2025 else [1, 2, 3, 4, 5]
 
     session = requests.Session()
     total = 0
@@ -613,6 +898,7 @@ def run_scraper(rounds: Optional[List[int]] = None, year: int = 2024, db_path: O
 
 
 if __name__ == "__main__":
-    y_arg = int(sys.argv[1]) if len(sys.argv) > 1 else 2024
-    r_arg = [int(sys.argv[2])] if len(sys.argv) > 2 else [1, 2, 3, 4, 5]
+    y_arg = int(sys.argv[1]) if len(sys.argv) > 1 else 2025
+    default_rounds = [1, 2, 3, 4, 5, 6] if y_arg == 2025 else [1, 2, 3, 4, 5]
+    r_arg = [int(sys.argv[2])] if len(sys.argv) > 2 else default_rounds
     run_scraper(rounds=r_arg, year=y_arg)

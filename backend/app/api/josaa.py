@@ -23,16 +23,18 @@ def get_josaa_filter_options():
 
 @router.get("/cutoffs", response_model=JosaaPaginatedResponse)
 def get_josaa_cutoffs(
-    round_no: Optional[int] = Query(None, description="JoSAA Round (e.g. 1, 2, 3, 4, 5)"),
+    round_no: Optional[str] = Query(None, description="JoSAA Round number(s), comma-separated (e.g. 1 or 1,2,3)"),
     institute_type: Optional[str] = Query(None, description="IIT, NIT, IIIT, Other-GFTI"),
     institute_name: Optional[str] = Query(None, description="Institute name query or comma-separated"),
     institute_id: Optional[int] = Query(None, description="Specific institute ID"),
+    state: Optional[str] = Query(None, description="Institute physical location state (e.g. Maharashtra, Karnataka)"),
+    candidate_state: Optional[str] = Query(None, description="Candidate Home State for HS/OS quota eligibility"),
     academic_program: Optional[str] = Query(None, description="Academic program / branch name"),
     program_id: Optional[int] = Query(None, description="Specific program ID"),
     category: Optional[str] = Query(None, description="Category code (OPEN, OBC-NCL, SC, ST, etc.)"),
     quota: Optional[str] = Query(None, description="AI, HS, OS"),
     gender: Optional[str] = Query(None, description="Gender pool (Gender-Neutral or Female-only)"),
-    academic_year: Optional[int] = Query(None, description="Year (e.g. 2025)"),
+    academic_year: Optional[int] = Query(None, description="Year (e.g. 2026)"),
     max_rank: Optional[int] = Query(None, description="Student JEE rank (shows where student rank <= closing_rank)"),
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=1000),
@@ -47,6 +49,8 @@ def get_josaa_cutoffs(
             institute_type=institute_type,
             institute_name=institute_name,
             institute_id=institute_id,
+            state=state,
+            candidate_state=candidate_state,
             academic_program=academic_program,
             program_id=program_id,
             category=category,
@@ -64,10 +68,12 @@ def get_josaa_cutoffs(
 
 @router.get("/export")
 def export_josaa_cutoffs_csv(
-    round_no: Optional[int] = Query(None),
+    round_no: Optional[str] = Query(None),
     institute_type: Optional[str] = Query(None),
     institute_name: Optional[str] = Query(None),
     institute_id: Optional[int] = Query(None),
+    state: Optional[str] = Query(None),
+    candidate_state: Optional[str] = Query(None),
     academic_program: Optional[str] = Query(None),
     program_id: Optional[int] = Query(None),
     category: Optional[str] = Query(None),
@@ -86,6 +92,8 @@ def export_josaa_cutoffs_csv(
             institute_type=institute_type,
             institute_name=institute_name,
             institute_id=institute_id,
+            state=state,
+            candidate_state=candidate_state,
             academic_program=academic_program,
             program_id=program_id,
             category=category,
@@ -166,7 +174,7 @@ def reset_josaa_database_endpoint():
 @router.post("/reload-data")
 def reload_josaa_data_endpoint():
     """
-    Re-seeds official institutes and complete cutoffs into josaa.db for both 2024 & 2025.
+    Re-seeds official institutes and complete cutoffs into josaa.db for both 2025 & 2026.
     """
     from app.services.scrape_josaa_official import start_josaa_scraper_background
     try:
@@ -178,7 +186,7 @@ def reload_josaa_data_endpoint():
             }
         return {
             "success": True,
-            "message": "JoSAA multi-year web scraper started in background for Years 2024 and 2025 across all rounds."
+            "message": "JoSAA multi-year web scraper started in background for Years 2025 and 2026 across all rounds."
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to start JoSAA scraper: {str(e)}")
@@ -186,8 +194,8 @@ def reload_josaa_data_endpoint():
 @router.post("/scrape")
 def trigger_josaa_scraper_endpoint():
     """
-    Triggers multi-year background scraping of official JoSAA cutoffs across all 5 rounds
-    for both Year 2024 (official archive) and Year 2025 (official dataset).
+    Triggers multi-year background scraping of official JoSAA cutoffs across all rounds
+    (all 6 rounds for Year 2025, and 5 rounds for Year 2026).
     """
     from app.services.scrape_josaa_official import start_josaa_scraper_background
     try:
@@ -199,7 +207,7 @@ def trigger_josaa_scraper_endpoint():
             }
         return {
             "success": True,
-            "message": "JoSAA scraper started in background for Years 2024 and 2025 across all rounds."
+            "message": "JoSAA scraper started in background for Years 2025 and 2026 across all rounds."
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to start JoSAA scraper: {str(e)}")
@@ -212,6 +220,26 @@ def get_josaa_scraper_status_endpoint():
     """
     from app.services.scrape_josaa_official import get_josaa_scraper_status
     return get_josaa_scraper_status()
+
+
+@router.post("/scrape-home-states")
+def scrape_home_states_endpoint():
+    """
+    Scrapes the official JoSAA seat matrix institute view to detect institutes
+    offering Home State (HS) quota and populates their Home State in josaa.db.
+    """
+    from app.services.scrape_josaa_official import scrape_institute_home_states
+    try:
+        updated = scrape_institute_home_states()
+        return {
+            "success": True,
+            "message": f"Successfully mapped and updated Home State for {len(updated)} institutes offering Home State quota.",
+            "updated_count": len(updated),
+            "institutes": updated,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to scrape institute home states: {str(e)}")
+
 
 
 

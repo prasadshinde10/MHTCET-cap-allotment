@@ -85,6 +85,10 @@ def fetch_josaa_filter_options() -> Dict[str, Any]:
         cursor.execute("SELECT DISTINCT gender FROM cutoff_records WHERE gender IS NOT NULL AND gender != '' ORDER BY gender ASC")
         genders = [r["gender"] for r in cursor.fetchall()]
 
+        # Home States (from institutes with state populated)
+        cursor.execute("SELECT DISTINCT state FROM institutes WHERE state IS NOT NULL AND state != '' ORDER BY state ASC")
+        states = [r["state"] for r in cursor.fetchall()]
+
         return {
             "rounds": rounds,
             "years": years,
@@ -94,15 +98,18 @@ def fetch_josaa_filter_options() -> Dict[str, Any]:
             "categories": categories,
             "quotas": quotas,
             "genders": genders,
+            "states": states,
         }
     finally:
         conn.close()
 
 def query_josaa_cutoffs(
-    round_no: Optional[int] = None,
+    round_no: Optional[str] = None,
     institute_type: Optional[str] = None,
     institute_name: Optional[str] = None,
     institute_id: Optional[int] = None,
+    state: Optional[str] = None,
+    candidate_state: Optional[str] = None,
     academic_program: Optional[str] = None,
     program_id: Optional[int] = None,
     category: Optional[str] = None,
@@ -122,8 +129,15 @@ def query_josaa_cutoffs(
         params = []
 
         if round_no is not None:
-            where_clauses.append("cr.round_no = ?")
-            params.append(round_no)
+            round_str = str(round_no).strip()
+            round_nums = [int(r.strip()) for r in round_str.split(',') if r.strip().isdigit()]
+            if len(round_nums) == 1:
+                where_clauses.append("cr.round_no = ?")
+                params.append(round_nums[0])
+            elif len(round_nums) > 1:
+                placeholders = ','.join(['?' for _ in round_nums])
+                where_clauses.append(f"cr.round_no IN ({placeholders})")
+                params.extend(round_nums)
 
         if academic_year is not None:
             where_clauses.append("cr.academic_year = ?")
@@ -158,6 +172,65 @@ def query_josaa_cutoffs(
                 placeholders = ",".join(["?" for _ in types])
                 where_clauses.append(f"i.institute_type IN ({placeholders})")
                 params.extend(types)
+
+        if state:
+            states = [s.strip() for s in state.split(",") if s.strip()]
+            if len(states) == 1:
+                where_clauses.append("(i.state = ? OR i.state LIKE ?)")
+                params.extend([states[0], f"%{states[0]}%"])
+            elif len(states) > 1:
+                clause_parts = []
+                for s in states:
+                    clause_parts.append("(i.state = ? OR i.state LIKE ?)")
+                    params.extend([s, f"%{s}%"])
+                where_clauses.append(f"({' OR '.join(clause_parts)})")
+
+        # Candidate Home State Quota Resolver:
+        # Candidate is eligible for:
+        # 1. 'AI' (All India) quota across all institutes (IITs, IIITs, GFTIs)
+        # 2. 'HS' (Home State) quota where institute is located in candidate's home state
+        # 3. 'OS' (Other State) quota where institute is located outside candidate's home state
+        # 4. Special quotas: 'GO' (if candidate is from Goa), 'JK' (if candidate is from J&K), 'LA' (if candidate is from Ladakh)
+        if candidate_state:
+            c_states = [s.strip() for s in candidate_state.split(",") if s.strip()]
+            if len(c_states) == 1:
+                cs = c_states[0]
+                cand_clause = """(
+                    cr.quota = 'AI'
+                    OR (cr.quota = 'HS' AND (i.state = ? OR i.state LIKE ?))
+                    OR (cr.quota = 'OS' AND (i.state IS NULL OR (i.state != ? AND i.state NOT LIKE ?)))
+                    OR (cr.quota = 'GO' AND (? = 'Goa'))
+                    OR (cr.quota = 'JK' AND (? = 'Jammu and Kashmir'))
+                    OR (cr.quota = 'LA' AND (? = 'Ladakh'))
+                )"""
+                where_clauses.append(cand_clause)
+                params.extend([cs, f"%{cs}%", cs, f"%{cs}%", cs, cs, cs])
+            elif len(c_states) > 1:
+                hs_parts = []
+                os_parts = []
+                for s in c_states:
+                    hs_parts.append("(i.state = ? OR i.state LIKE ?)")
+                    params.extend([s, f"%{s}%"])
+                for s in c_states:
+                    os_parts.append("(i.state != ? AND i.state NOT LIKE ?)")
+                    params.extend([s, f"%{s}%"])
+
+                special_parts = []
+                if any(s.lower() == "goa" for s in c_states):
+                    special_parts.append("cr.quota = 'GO'")
+                if any("jammu" in s.lower() for s in c_states):
+                    special_parts.append("cr.quota = 'JK'")
+                if any("ladakh" in s.lower() for s in c_states):
+                    special_parts.append("cr.quota = 'LA'")
+
+                special_str = (" OR " + " OR ".join(special_parts)) if special_parts else ""
+                cand_clause = f"""(
+                    cr.quota = 'AI'
+                    OR (cr.quota = 'HS' AND ({' OR '.join(hs_parts)}))
+                    OR (cr.quota = 'OS' AND (i.state IS NULL OR ({' AND '.join(os_parts)})))
+                    {special_str}
+                )"""
+                where_clauses.append(cand_clause)
 
         if program_id is not None:
             where_clauses.append("cr.program_id = ?")
