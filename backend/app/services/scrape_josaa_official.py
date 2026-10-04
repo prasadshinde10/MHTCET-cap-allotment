@@ -13,6 +13,7 @@ import io
 import csv
 import sqlite3
 import threading
+import time
 import requests
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
@@ -101,130 +102,141 @@ def determine_institute_type(name: str) -> str:
     return "Other-GFTI"
 
 
-def scrape_archive_round(session: requests.Session, year: int = 2025, round_no: int = 1) -> List[Dict[str, Any]]:
+def scrape_archive_round(session: requests.Session, year: int = 2025, round_no: int = 1, max_retries: int = 3) -> List[Dict[str, Any]]:
     """
     Scrapes an archival year (e.g. 2025, 2024) exclusively from the official NIC portal:
     https://josaa.admissions.nic.in/applicant/seatmatrix/openingclosingrankarchieve.aspx
-    using cascading ASP.NET PostBack simulation.
+    using cascading ASP.NET PostBack simulation with auto-retry and resilient timeouts.
     """
-    print(f"[*] Connecting to official JoSAA Archive portal for Year {year}, Round {round_no}...", flush=True)
-    try:
-        s = requests.Session()
-        r0 = s.get(ARCHIVE_URL, headers=HEADERS, timeout=30)
-        if r0.status_code != 200:
-            print(f"[!] Initial archive GET failed: HTTP {r0.status_code}", flush=True)
-            return []
-        s0 = BeautifulSoup(r0.text, 'html.parser')
+    for attempt in range(1, max_retries + 1):
+        print(f"[*] Connecting to official JoSAA Archive portal for Year {year}, Round {round_no} (attempt {attempt}/{max_retries})...", flush=True)
+        try:
+            s = requests.Session()
+            r0 = s.get(ARCHIVE_URL, headers=HEADERS, timeout=45)
+            if r0.status_code != 200:
+                print(f"[!] Initial archive GET failed: HTTP {r0.status_code}", flush=True)
+                if attempt < max_retries:
+                    time.sleep(2 * attempt)
+                    continue
+                return []
+            s0 = BeautifulSoup(r0.text, 'html.parser')
 
-        # 1. Select Year (PostBack)
-        d1 = dict(get_asp_fields(s0))
-        d1['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlYear'
-        d1['__EVENTARGUMENT'] = ''
-        d1['__LASTFOCUS'] = ''
-        d1['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
-        r1 = s.post(ARCHIVE_URL, data=d1, headers=HEADERS, timeout=40)
-        s1 = BeautifulSoup(r1.text, 'html.parser')
+            # 1. Select Year (PostBack)
+            d1 = dict(get_asp_fields(s0))
+            d1['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlYear'
+            d1['__EVENTARGUMENT'] = ''
+            d1['__LASTFOCUS'] = ''
+            d1['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
+            r1 = s.post(ARCHIVE_URL, data=d1, headers=HEADERS, timeout=60)
+            s1 = BeautifulSoup(r1.text, 'html.parser')
 
-        # 2. Select Round (PostBack)
-        d2 = dict(get_asp_fields(s1))
-        d2['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlroundno'
-        d2['__EVENTARGUMENT'] = ''
-        d2['__LASTFOCUS'] = ''
-        d2['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
-        d2['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
-        r2 = s.post(ARCHIVE_URL, data=d2, headers=HEADERS, timeout=40)
-        s2 = BeautifulSoup(r2.text, 'html.parser')
+            # 2. Select Round (PostBack)
+            d2 = dict(get_asp_fields(s1))
+            d2['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlroundno'
+            d2['__EVENTARGUMENT'] = ''
+            d2['__LASTFOCUS'] = ''
+            d2['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
+            d2['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+            r2 = s.post(ARCHIVE_URL, data=d2, headers=HEADERS, timeout=60)
+            s2 = BeautifulSoup(r2.text, 'html.parser')
 
-        # 3. Select InstType = ALL (PostBack)
-        d3 = dict(get_asp_fields(s2))
-        d3['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstype'
-        d3['__EVENTARGUMENT'] = ''
-        d3['__LASTFOCUS'] = ''
-        d3['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
-        d3['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
-        d3['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
-        r3 = s.post(ARCHIVE_URL, data=d3, headers=HEADERS, timeout=40)
-        s2 = BeautifulSoup(r3.text, 'html.parser')
+            # 3. Select InstType = ALL (PostBack)
+            d3 = dict(get_asp_fields(s2))
+            d3['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstype'
+            d3['__EVENTARGUMENT'] = ''
+            d3['__LASTFOCUS'] = ''
+            d3['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
+            d3['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+            d3['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+            r3 = s.post(ARCHIVE_URL, data=d3, headers=HEADERS, timeout=60)
+            s2 = BeautifulSoup(r3.text, 'html.parser')
 
-        # 4. Select Institute = ALL (PostBack)
-        d4 = dict(get_asp_fields(s2))
-        d4['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstitute'
-        d4['__EVENTARGUMENT'] = ''
-        d4['__LASTFOCUS'] = ''
-        d4['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
-        d4['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
-        d4['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
-        d4['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
-        r4 = s.post(ARCHIVE_URL, data=d4, headers=HEADERS, timeout=40)
-        s4 = BeautifulSoup(r4.text, 'html.parser')
+            # 4. Select Institute = ALL (PostBack)
+            d4 = dict(get_asp_fields(s2))
+            d4['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstitute'
+            d4['__EVENTARGUMENT'] = ''
+            d4['__LASTFOCUS'] = ''
+            d4['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
+            d4['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+            d4['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+            d4['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
+            r4 = s.post(ARCHIVE_URL, data=d4, headers=HEADERS, timeout=60)
+            s4 = BeautifulSoup(r4.text, 'html.parser')
 
-        # 5. Select Branch = ALL (PostBack)
-        d5 = dict(get_asp_fields(s4))
-        d5['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlBranch'
-        d5['__EVENTARGUMENT'] = ''
-        d5['__LASTFOCUS'] = ''
-        d5['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
-        d5['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
-        d5['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
-        d5['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
-        d5['ctl00$ContentPlaceHolder1$ddlBranch'] = 'ALL'
-        r5 = s.post(ARCHIVE_URL, data=d5, headers=HEADERS, timeout=40)
-        s5 = BeautifulSoup(r5.text, 'html.parser')
+            # 5. Select Branch = ALL (PostBack)
+            d5 = dict(get_asp_fields(s4))
+            d5['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlBranch'
+            d5['__EVENTARGUMENT'] = ''
+            d5['__LASTFOCUS'] = ''
+            d5['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
+            d5['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+            d5['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+            d5['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
+            d5['ctl00$ContentPlaceHolder1$ddlBranch'] = 'ALL'
+            r5 = s.post(ARCHIVE_URL, data=d5, headers=HEADERS, timeout=60)
+            s5 = BeautifulSoup(r5.text, 'html.parser')
 
-        # 6. Final Submit with Seat Type = ALL
-        d6 = dict(get_asp_fields(s5))
-        d6['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
-        d6['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
-        d6['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
-        d6['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
-        d6['ctl00$ContentPlaceHolder1$ddlBranch'] = 'ALL'
-        seat_sel = s5.find('select', attrs={'name': lambda n: n and 'SeatType' in n or n and 'Seattype' in n})
-        seat_name = seat_sel.get('name') if seat_sel else 'ctl00$ContentPlaceHolder1$ddlSeatType'
-        d6[seat_name] = 'ALL'
-        d6['ctl00$ContentPlaceHolder1$btnSubmit'] = 'Submit'
+            # 6. Final Submit with Seat Type = ALL
+            d6 = dict(get_asp_fields(s5))
+            d6['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
+            d6['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+            d6['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+            d6['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
+            d6['ctl00$ContentPlaceHolder1$ddlBranch'] = 'ALL'
+            seat_sel = s5.find('select', attrs={'name': lambda n: n and 'SeatType' in n or n and 'Seattype' in n})
+            seat_name = seat_sel.get('name') if seat_sel else 'ctl00$ContentPlaceHolder1$ddlSeatType'
+            d6[seat_name] = 'ALL'
+            d6['ctl00$ContentPlaceHolder1$btnSubmit'] = 'Submit'
 
-        r6 = s.post(ARCHIVE_URL, data=d6, headers=HEADERS, timeout=120)
-        s6 = BeautifulSoup(r6.text, 'html.parser')
+            r6 = s.post(ARCHIVE_URL, data=d6, headers=HEADERS, timeout=180)
+            s6 = BeautifulSoup(r6.text, 'html.parser')
 
-        table = None
-        for t in s6.find_all('table'):
-            if len(t.find_all('tr')) > 5:
-                table = t
-                break
+            table = None
+            for t in s6.find_all('table'):
+                if len(t.find_all('tr')) > 5:
+                    table = t
+                    break
 
-        if not table:
-            print(f"[!] No cutoff table found for Year {year}, Round {round_no}", flush=True)
-            return []
+            if not table:
+                print(f"[!] No cutoff table found for Year {year}, Round {round_no} on attempt {attempt}", flush=True)
+                if attempt < max_retries:
+                    time.sleep(3 * attempt)
+                    continue
+                return []
 
-        rows = table.find_all('tr')
-        print(f"[+] Found table with {len(rows)} rows for Year {year}, Round {round_no}", flush=True)
+            rows = table.find_all('tr')
+            print(f"[+] Found table with {len(rows)} rows for Year {year}, Round {round_no}", flush=True)
 
-        records = []
-        for tr in rows[1:]:
-            cells = [' '.join(c.get_text(' ', strip=True).split()) for c in tr.find_all(['td', 'th'])]
-            if len(cells) < 6:
+            records = []
+            for tr in rows[1:]:
+                cells = [' '.join(c.get_text(' ', strip=True).split()) for c in tr.find_all(['td', 'th'])]
+                if len(cells) < 6:
+                    continue
+                inst_name = cells[0]
+                prog_name = cells[1]
+                if not inst_name or not prog_name:
+                    continue
+                records.append({
+                    'institute': inst_name,
+                    'program': prog_name,
+                    'quota': cells[2] if len(cells) > 2 and cells[2] else 'AI',
+                    'category': cells[3] if len(cells) > 3 and cells[3] else 'OPEN',
+                    'gender': cells[4] if len(cells) > 4 and cells[4] else 'Gender-Neutral',
+                    'opening_rank': cells[5] if len(cells) > 5 else '0',
+                    'closing_rank': cells[6] if len(cells) > 6 else '0',
+                    'round_no': round_no,
+                    'year': year
+                })
+
+            print(f"[+] Successfully extracted {len(records)} records for Year {year}, Round {round_no}.", flush=True)
+            return records
+        except Exception as e:
+            print(f"[!] Error in archive scrape for Year {year}, Round {round_no} (attempt {attempt}/{max_retries}): {e}", flush=True)
+            if attempt < max_retries:
+                time.sleep(3 * attempt)
                 continue
-            inst_name = cells[0]
-            prog_name = cells[1]
-            if not inst_name or not prog_name:
-                continue
-            records.append({
-                'institute': inst_name,
-                'program': prog_name,
-                'quota': cells[2] if len(cells) > 2 and cells[2] else 'AI',
-                'category': cells[3] if len(cells) > 3 and cells[3] else 'OPEN',
-                'gender': cells[4] if len(cells) > 4 and cells[4] else 'Gender-Neutral',
-                'opening_rank': cells[5] if len(cells) > 5 else '0',
-                'closing_rank': cells[6] if len(cells) > 6 else '0',
-                'round_no': round_no,
-                'year': year
-            })
-
-        print(f"[+] Successfully extracted {len(records)} records for Round {round_no}.", flush=True)
-        return records
-    except Exception as e:
-        print(f"[!] Error in archive scrape for Year {year}, Round {round_no}: {e}", flush=True)
-        return []
+            return []
+    return []
 
 
 def scrape_2025_round(session: requests.Session, round_no: int = 1) -> List[Dict[str, Any]]:
@@ -232,110 +244,121 @@ def scrape_2025_round(session: requests.Session, round_no: int = 1) -> List[Dict
     return scrape_archive_round(session, year=2025, round_no=round_no)
 
 
-def scrape_2026_round(session: requests.Session, round_no: int = 1) -> List[Dict[str, Any]]:
-    """Scrapes Year 2026 from the live NIC portal (currentorcr.aspx) using cascading ASP.NET PostBack."""
-    print(f"[*] Connecting to JoSAA live portal for Year 2026, Round {round_no}...", flush=True)
-    try:
-        # Use a fresh session per round to guarantee pristine viewstate sequence
-        s = requests.Session()
-        r0 = s.get(CURRENT_URL, headers=HEADERS, timeout=30)
-        if r0.status_code != 200:
-            print(f"[!] Initial live portal GET failed: HTTP {r0.status_code}", flush=True)
-            return []
-        s0 = BeautifulSoup(r0.text, 'html.parser')
+def scrape_2026_round(session: requests.Session, round_no: int = 1, max_retries: int = 3) -> List[Dict[str, Any]]:
+    """Scrapes Year 2026 from the live NIC portal (currentorcr.aspx) using cascading ASP.NET PostBack with auto-retry."""
+    for attempt in range(1, max_retries + 1):
+        print(f"[*] Connecting to JoSAA live portal for Year 2026, Round {round_no} (attempt {attempt}/{max_retries})...", flush=True)
+        try:
+            # Use a fresh session per round to guarantee pristine viewstate sequence
+            s = requests.Session()
+            r0 = s.get(CURRENT_URL, headers=HEADERS, timeout=45)
+            if r0.status_code != 200:
+                print(f"[!] Initial live portal GET failed: HTTP {r0.status_code}", flush=True)
+                if attempt < max_retries:
+                    time.sleep(2 * attempt)
+                    continue
+                return []
+            s0 = BeautifulSoup(r0.text, 'html.parser')
 
-        # 1. Select Round (PostBack)
-        d1 = dict(get_asp_fields(s0))
-        d1['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlroundno'
-        d1['__EVENTARGUMENT'] = ''
-        d1['__LASTFOCUS'] = ''
-        d1['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
-        r1 = s.post(CURRENT_URL, data=d1, headers=HEADERS, timeout=40)
-        s1 = BeautifulSoup(r1.text, 'html.parser')
+            # 1. Select Round (PostBack)
+            d1 = dict(get_asp_fields(s0))
+            d1['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlroundno'
+            d1['__EVENTARGUMENT'] = ''
+            d1['__LASTFOCUS'] = ''
+            d1['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+            r1 = s.post(CURRENT_URL, data=d1, headers=HEADERS, timeout=60)
+            s1 = BeautifulSoup(r1.text, 'html.parser')
 
-        # 2. Select InstType = ALL (PostBack)
-        d2 = dict(get_asp_fields(s1))
-        d2['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstype'
-        d2['__EVENTARGUMENT'] = ''
-        d2['__LASTFOCUS'] = ''
-        d2['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
-        d2['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
-        r2 = s.post(CURRENT_URL, data=d2, headers=HEADERS, timeout=40)
-        s2 = BeautifulSoup(r2.text, 'html.parser')
+            # 2. Select InstType = ALL (PostBack)
+            d2 = dict(get_asp_fields(s1))
+            d2['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstype'
+            d2['__EVENTARGUMENT'] = ''
+            d2['__LASTFOCUS'] = ''
+            d2['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+            d2['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+            r2 = s.post(CURRENT_URL, data=d2, headers=HEADERS, timeout=60)
+            s2 = BeautifulSoup(r2.text, 'html.parser')
 
-        # 3. Select Institute = ALL (PostBack)
-        d3 = dict(get_asp_fields(s2))
-        d3['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstitute'
-        d3['__EVENTARGUMENT'] = ''
-        d3['__LASTFOCUS'] = ''
-        d3['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
-        d3['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
-        d3['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
-        r3 = s.post(CURRENT_URL, data=d3, headers=HEADERS, timeout=40)
-        s3 = BeautifulSoup(r3.text, 'html.parser')
+            # 3. Select Institute = ALL (PostBack)
+            d3 = dict(get_asp_fields(s2))
+            d3['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstitute'
+            d3['__EVENTARGUMENT'] = ''
+            d3['__LASTFOCUS'] = ''
+            d3['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+            d3['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+            d3['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
+            r3 = s.post(CURRENT_URL, data=d3, headers=HEADERS, timeout=60)
+            s3 = BeautifulSoup(r3.text, 'html.parser')
 
-        # 4. Select Branch = ALL (PostBack)
-        d4 = dict(get_asp_fields(s3))
-        d4['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlBranch'
-        d4['__EVENTARGUMENT'] = ''
-        d4['__LASTFOCUS'] = ''
-        d4['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
-        d4['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
-        d4['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
-        d4['ctl00$ContentPlaceHolder1$ddlBranch'] = 'ALL'
-        r4 = s.post(CURRENT_URL, data=d4, headers=HEADERS, timeout=40)
-        s4 = BeautifulSoup(r4.text, 'html.parser')
+            # 4. Select Branch = ALL (PostBack)
+            d4 = dict(get_asp_fields(s3))
+            d4['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlBranch'
+            d4['__EVENTARGUMENT'] = ''
+            d4['__LASTFOCUS'] = ''
+            d4['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+            d4['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+            d4['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
+            d4['ctl00$ContentPlaceHolder1$ddlBranch'] = 'ALL'
+            r4 = s.post(CURRENT_URL, data=d4, headers=HEADERS, timeout=60)
+            s4 = BeautifulSoup(r4.text, 'html.parser')
 
-        # 5. Final Submit with Seat Type = ALL (note exact lowercase 't' in ddlSeattype)
-        d5 = dict(get_asp_fields(s4))
-        d5['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
-        d5['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
-        d5['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
-        d5['ctl00$ContentPlaceHolder1$ddlBranch'] = 'ALL'
-        d5['ctl00$ContentPlaceHolder1$ddlSeattype'] = 'ALL'
-        d5['ctl00$ContentPlaceHolder1$btnSubmit'] = 'Submit'
-        r5 = s.post(CURRENT_URL, data=d5, headers=HEADERS, timeout=120)
-        s5 = BeautifulSoup(r5.text, 'html.parser')
+            # 5. Final Submit with Seat Type = ALL (note exact lowercase 't' in ddlSeattype)
+            d5 = dict(get_asp_fields(s4))
+            d5['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
+            d5['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
+            d5['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
+            d5['ctl00$ContentPlaceHolder1$ddlBranch'] = 'ALL'
+            d5['ctl00$ContentPlaceHolder1$ddlSeattype'] = 'ALL'
+            d5['ctl00$ContentPlaceHolder1$btnSubmit'] = 'Submit'
+            r5 = s.post(CURRENT_URL, data=d5, headers=HEADERS, timeout=180)
+            s5 = BeautifulSoup(r5.text, 'html.parser')
 
-        table = None
-        for t in s5.find_all('table'):
-            if len(t.find_all('tr')) > 5:
-                table = t
-                break
+            table = None
+            for t in s5.find_all('table'):
+                if len(t.find_all('tr')) > 5:
+                    table = t
+                    break
 
-        if not table:
-            print(f"[!] No cutoff table found for Year 2026, Round {round_no}", flush=True)
-            return []
+            if not table:
+                print(f"[!] No cutoff table found for Year 2026, Round {round_no} on attempt {attempt}", flush=True)
+                if attempt < max_retries:
+                    time.sleep(3 * attempt)
+                    continue
+                return []
 
-        rows = table.find_all('tr')
-        print(f"[+] Found table with {len(rows)} rows for Year 2026, Round {round_no}", flush=True)
+            rows = table.find_all('tr')
+            print(f"[+] Found table with {len(rows)} rows for Year 2026, Round {round_no}", flush=True)
 
-        records = []
-        for tr in rows[1:]:
-            cells = [' '.join(c.get_text(' ', strip=True).split()) for c in tr.find_all(['td', 'th'])]
-            if len(cells) < 6:
+            records = []
+            for tr in rows[1:]:
+                cells = [' '.join(c.get_text(' ', strip=True).split()) for c in tr.find_all(['td', 'th'])]
+                if len(cells) < 6:
+                    continue
+                inst_name = cells[0]
+                prog_name = cells[1]
+                if not inst_name or not prog_name:
+                    continue
+                records.append({
+                    'institute': inst_name,
+                    'program': prog_name,
+                    'quota': cells[2] if len(cells) > 2 and cells[2] else 'AI',
+                    'category': cells[3] if len(cells) > 3 and cells[3] else 'OPEN',
+                    'gender': cells[4] if len(cells) > 4 and cells[4] else 'Gender-Neutral',
+                    'opening_rank': cells[5] if len(cells) > 5 else '0',
+                    'closing_rank': cells[6] if len(cells) > 6 else '0',
+                    'round_no': round_no,
+                    'year': 2026
+                })
+
+            print(f"[+] Successfully extracted {len(records)} records for Year 2026, Round {round_no}.", flush=True)
+            return records
+        except Exception as e:
+            print(f"[!] Error in live portal scrape for Year 2026, Round {round_no} (attempt {attempt}/{max_retries}): {e}", flush=True)
+            if attempt < max_retries:
+                time.sleep(3 * attempt)
                 continue
-            inst_name = cells[0]
-            prog_name = cells[1]
-            if not inst_name or not prog_name:
-                continue
-            records.append({
-                'institute': inst_name,
-                'program': prog_name,
-                'quota': cells[2] if len(cells) > 2 and cells[2] else 'AI',
-                'category': cells[3] if len(cells) > 3 and cells[3] else 'OPEN',
-                'gender': cells[4] if len(cells) > 4 and cells[4] else 'Gender-Neutral',
-                'opening_rank': cells[5] if len(cells) > 5 else '0',
-                'closing_rank': cells[6] if len(cells) > 6 else '0',
-                'round_no': round_no,
-                'year': 2026
-            })
-
-        print(f"[+] Successfully extracted {len(records)} records for Year 2026, Round {round_no}.", flush=True)
-        return records
-    except Exception as e:
-        print(f"[!] Error in live portal scrape for Year 2026, Round {round_no}: {e}", flush=True)
-        return []
+            return []
+    return []
 
 
 def scrape_round(session: requests.Session, round_no: int = 1, year: int = 2025) -> List[Dict[str, Any]]:
