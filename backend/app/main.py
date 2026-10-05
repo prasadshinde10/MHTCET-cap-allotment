@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 import logging
 import os
 
+# Router configurations
 from app.api.router import api_router
 from app.api.health import router as health_router
 from app.config import get_settings

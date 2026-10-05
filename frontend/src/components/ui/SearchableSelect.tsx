@@ -23,6 +23,8 @@ interface SearchableSelectProps {
   className?: string;
   id?: string;
   helperText?: string;
+  dropdownClassName?: string;
+  wrapLabels?: boolean;
 }
 
 export const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -38,6 +40,8 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   className,
   id,
   helperText,
+  dropdownClassName,
+  wrapLabels = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -193,7 +197,12 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
 
       {/* Dropdown Popover */}
       {isOpen && (
-        <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+        <div
+          className={cn(
+            'absolute z-50 left-0 mt-1.5 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150',
+            dropdownClassName ? dropdownClassName : 'right-0'
+          )}
+        >
           {/* Search bar inside popover */}
           <div className="p-2.5 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
             <Search className="w-4 h-4 text-gray-400 ml-1 flex-shrink-0" />
@@ -302,10 +311,12 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                           {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
                         </div>
 
-                        <div className="truncate">
-                          <div className="truncate">{opt.label}</div>
+                        <div className={wrapLabels ? 'min-w-0 flex-1 whitespace-normal break-words' : 'truncate'}>
+                          <div className={wrapLabels ? 'whitespace-normal break-words font-medium leading-snug' : 'truncate'}>
+                            {opt.label}
+                          </div>
                           {opt.sublabel && (
-                            <div className="text-[11px] text-gray-400 font-normal truncate mt-0.5">
+                            <div className={cn('text-[11px] text-gray-400 font-normal mt-0.5', wrapLabels ? 'whitespace-normal break-words' : 'truncate')}>
                               {opt.sublabel}
                             </div>
                           )}
@@ -313,7 +324,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                       </div>
 
                       {isChecked && !isAllOption && (
-                        <span className="text-[11px] font-semibold text-primary-600 bg-primary-100/60 px-1.5 py-0.5 rounded flex-shrink-0">
+                        <span className="text-[11px] font-semibold text-primary-600 bg-primary-100/60 px-1.5 py-0.5 rounded flex-shrink-0 ml-2">
                           Selected
                         </span>
                       )}
@@ -334,10 +345,12 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                           : 'text-gray-700 hover:bg-gray-50'
                       )}
                     >
-                      <div className="truncate pr-2">
-                        <div className="truncate">{opt.label}</div>
+                      <div className={cn('pr-2', wrapLabels ? 'min-w-0 flex-1 whitespace-normal break-words' : 'truncate')}>
+                        <div className={wrapLabels ? 'whitespace-normal break-words font-medium leading-snug' : 'truncate'}>
+                          {opt.label}
+                        </div>
                         {opt.sublabel && (
-                          <div className="text-[11px] text-gray-400 font-normal truncate mt-0.5">
+                          <div className={cn('text-[11px] text-gray-400 font-normal mt-0.5', wrapLabels ? 'whitespace-normal break-words' : 'truncate')}>
                             {opt.sublabel}
                           </div>
                         )}
