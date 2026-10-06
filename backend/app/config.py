@@ -9,20 +9,21 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 
 class Settings(BaseSettings):
     # Database
-    DATABASE_URL: str
+    DATABASE_URL: str = "sqlite:///./cap_portal.db"
 
     # Authentication
-    ADMIN_USERNAME: str
-    ADMIN_EMAIL: str
-    ADMIN_PASSWORD_HASH: str
-    SECRET_KEY: str
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_EMAIL: str = "admin@example.com"
+    ADMIN_PASSWORD_HASH: str = "$2b$12$e8k8dG1RjH/jF90wM9d8EehcZJ3CqKq7K9b9N1L5gqL3s8f2m.n0G"  # default hash
+    SECRET_KEY: str = "cap_super_secret_jwt_key_development_change_in_prod"
     JWT_EXPIRY_HOURS: int = 8
 
     # Application development
-    APP_ENV: str = "development"
+    APP_ENV: str = "production"
     APP_VERSION: str = "1.0.0"
     PARSER_VERSION: str = "1.0.0"
     CORS_ORIGINS: List[str] = [
+        "*",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:5173",

@@ -80,7 +80,7 @@ app.add_middleware(
 if settings.APP_ENV == "production":
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=settings.CORS_ORIGINS,
+        allowed_hosts=["*"],
     )
 
 # Mount health at root level (no auth required)
