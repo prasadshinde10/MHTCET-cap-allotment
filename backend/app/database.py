@@ -29,7 +29,11 @@ if db_url.startswith("sqlite"):
         cursor.execute("PRAGMA busy_timeout=30000")
         cursor.close()
 else:
-    engine = create_engine(db_url, pool_pre_ping=True)
+    # Supabase connection URL normalization (postgres:// -> postgresql://)
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    engine = create_engine(db_url, pool_pre_ping=True, pool_size=10, max_overflow=20)
+
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

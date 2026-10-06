@@ -4,9 +4,17 @@ import re
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
-# Path to dedicated medical.db at project root (completely isolated from cutoff.db, josaa.db, iiser.db, bits.db)
+# Path to dedicated medical.db
 def get_medical_db_path() -> Path:
     root_path = Path(__file__).resolve().parent.parent.parent / "medical.db"
+    if root_path.exists():
+        return root_path
+    app_path = Path(__file__).resolve().parent.parent / "medical.db"
+    if app_path.exists():
+        return app_path
+    cwd_path = Path.cwd() / "medical.db"
+    if cwd_path.exists():
+        return cwd_path
     return root_path
 
 def get_medical_connection() -> sqlite3.Connection:

@@ -10,12 +10,22 @@ def get_josaa_db_path() -> Path:
     if root_path.exists():
         return root_path
     
-    # 2. Desktopossa fallback
+    # 2. App root (inside Docker /app/josaa.db)
+    app_path = Path(__file__).resolve().parent.parent / "josaa.db"
+    if app_path.exists():
+        return app_path
+
+    # 3. Current working directory
+    cwd_path = Path.cwd() / "josaa.db"
+    if cwd_path.exists():
+        return cwd_path
+    
+    # 4. Desktopossa fallback
     desktop_jossa = Path(r"C:\Users\HP\OneDrive\Desktop\jossa\database\josaa.db")
     if desktop_jossa.exists():
         return desktop_jossa
 
-    # 3. Default to root_path even if not created yet
+    # Default fallback
     return root_path
 
 def get_josaa_connection() -> sqlite3.Connection:
