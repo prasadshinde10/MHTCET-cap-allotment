@@ -29,4 +29,13 @@ def seed_admin_user(db: Session):
         db.add(audit)
         db.commit()
     else:
-        logger.info("Admin user already exists, skipping seed.")
+        # Sync updated password hash & unlock account on startup if configured
+        if admin.password_hash != settings.ADMIN_PASSWORD_HASH or admin.locked_until is not None:
+            admin.password_hash = settings.ADMIN_PASSWORD_HASH
+            admin.email = settings.ADMIN_EMAIL
+            admin.failed_login_attempts = 0
+            admin.locked_until = None
+            db.commit()
+            logger.info("Admin user credentials synced from environment settings.")
+        else:
+            logger.info("Admin user already up to date.")
