@@ -76,8 +76,8 @@ def login(
         key="access_token",
         value=f"Bearer {access_token}",
         httponly=True,
-        samesite="lax",
-        secure=(settings.APP_ENV == "production"),
+        samesite="none" if settings.APP_ENV == "production" else "lax",
+        secure=True if settings.APP_ENV == "production" else False,
         max_age=settings.JWT_EXPIRY_HOURS * 3600,
     )
 
@@ -97,7 +97,11 @@ def logout(
     db: Session = Depends(get_db),
     current_admin: AdminUser = Depends(get_current_admin),
 ):
-    response.delete_cookie("access_token")
+    response.delete_cookie(
+        key="access_token",
+        samesite="none" if settings.APP_ENV == "production" else "lax",
+        secure=True if settings.APP_ENV == "production" else False,
+    )
     log_audit(
         db, "LOGOUT", "AdminUser", current_admin.id,
         {"username": current_admin.username},
