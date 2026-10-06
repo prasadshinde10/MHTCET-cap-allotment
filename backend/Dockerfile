@@ -34,8 +34,8 @@ COPY --from=builder /install /usr/local
 # Copy application code
 COPY . .
 
-# Create upload directory
-RUN mkdir -p /storage/uploads && chown -R appuser:appgroup /storage
+# Create upload directory and grant appuser permissions
+RUN mkdir -p /storage/uploads && chown -R appuser:appgroup /storage /app
 
 # Run as non-root user
 USER appuser

@@ -130,66 +130,125 @@ def category_summary(
 
 @router.get("/filter-options", response_model=FilterOptions)
 def get_filter_options(
-    db: Session = Depends(get_db),
-    admin=Depends(get_current_admin)
+    db: Session = Depends(get_db)
 ):
-    years = [r[0] for r in db.execute(select(Cutoff.year).distinct().order_by(Cutoff.year.desc())).all() if r[0]]
-    rounds = [r[0] for r in db.execute(select(CapRound.round_number).distinct().order_by(CapRound.round_number.asc())).all() if r[0]]
-    categories = [r[0] for r in db.execute(select(Cutoff.category_code).distinct().order_by(Cutoff.category_code.asc())).all() if r[0]]
-    seat_sections = [r[0] for r in db.execute(select(Cutoff.seat_section).distinct().order_by(Cutoff.seat_section.asc())).all() if r[0]]
-    stages = [r[0] for r in db.execute(select(Cutoff.stage).distinct().order_by(Cutoff.stage.asc())).all() if r[0]]
-    
-    # Collect unique cities and districts
-    cities = [r[0] for r in db.execute(select(College.city).distinct()).all() if r[0]]
-    districts = [r[0] for r in db.execute(select(College.district).distinct()).all() if r[0]]
-    cities_districts = sorted(list(set(cities + districts)))
+    from pathlib import Path
+    import sqlite3
+    from app.parser.institutes_data import INSTITUTES_DATA
+
+    # Resolve cutoff.db location
+    cutoff_db_path = Path(__file__).resolve().parent.parent / "cutoff.db"
+    if not cutoff_db_path.exists():
+        cutoff_db_path = Path(__file__).resolve().parent.parent.parent / "cutoff.db"
+
+    years = []
+    rounds = []
+    categories = []
+    seat_sections = []
+    stages = []
+    cities_districts = []
+    statuses = []
+    colleges = []
+    courses = []
+
+    # Attempt fetching from active SQLAlchemy session
+    try:
+        years = [r[0] for r in db.execute(select(Cutoff.year).distinct().order_by(Cutoff.year.desc())).all() if r[0]]
+        rounds = [r[0] for r in db.execute(select(CapRound.round_number).distinct().order_by(CapRound.round_number.asc())).all() if r[0]]
+        categories = [r[0] for r in db.execute(select(Cutoff.category_code).distinct().order_by(Cutoff.category_code.asc())).all() if r[0]]
+        seat_sections = [r[0] for r in db.execute(select(Cutoff.seat_section).distinct().order_by(Cutoff.seat_section.asc())).all() if r[0]]
+        stages = [r[0] for r in db.execute(select(Cutoff.stage).distinct().order_by(Cutoff.stage.asc())).all() if r[0]]
+        
+        cities = [r[0] for r in db.execute(select(College.city).distinct()).all() if r[0]]
+        districts = [r[0] for r in db.execute(select(College.district).distinct()).all() if r[0]]
+        cities_districts = sorted(list(set(cities + districts)))
+
+        college_rows = db.execute(
+            select(College.college_code, College.college_name, College.city, College.district, College.college_type, College.funding_type)
+            .order_by(College.college_name.asc())
+        ).all()
+        for r in college_rows:
+            code = str(r[0]).zfill(5)
+            inst_meta = INSTITUTES_DATA.get(code)
+            col_status = inst_meta.get("status") if inst_meta else r[5]
+            colleges.append(
+                CollegeOption(
+                    college_code=r[0],
+                    college_name=r[1],
+                    city=r[2],
+                    district=r[3],
+                    college_type=r[4],
+                    funding_type=r[5],
+                    status=col_status
+                )
+            )
+
+        course_rows = db.execute(
+            select(Course.course_code, Course.course_name)
+            .distinct()
+            .order_by(Course.course_name.asc())
+        ).all()
+        courses = [
+            CourseOption(course_code=r[0], course_name=r[1])
+            for r in course_rows
+        ]
+    except Exception:
+        db.rollback()
+
+    # If database is empty or Postgres transaction had no cutoff records, load directly from cutoff.db
+    if (not years or not colleges) and cutoff_db_path.exists():
+        try:
+            with sqlite3.connect(str(cutoff_db_path)) as s_conn:
+                s_cur = s_conn.cursor()
+                if not years:
+                    years = [r[0] for r in s_cur.execute("SELECT DISTINCT year FROM cutoffs ORDER BY year DESC").fetchall() if r[0]]
+                    if not years:
+                        years = [2024, 2023]
+                if not rounds:
+                    rounds = [r[0] for r in s_cur.execute("SELECT DISTINCT round_number FROM cap_rounds ORDER BY round_number ASC").fetchall() if r[0]]
+                    if not rounds:
+                        rounds = [1, 2, 3, 4]
+                if not categories:
+                    categories = [r[0] for r in s_cur.execute("SELECT DISTINCT category_code FROM cutoffs ORDER BY category_code ASC").fetchall() if r[0]]
+                if not seat_sections:
+                    seat_sections = [r[0] for r in s_cur.execute("SELECT DISTINCT seat_section FROM cutoffs ORDER BY seat_section ASC").fetchall() if r[0]]
+                if not stages:
+                    stages = [r[0] for r in s_cur.execute("SELECT DISTINCT stage FROM cutoffs ORDER BY stage ASC").fetchall() if r[0]]
+                if not cities_districts:
+                    c_list = [r[0] for r in s_cur.execute("SELECT DISTINCT city FROM colleges").fetchall() if r[0]]
+                    d_list = [r[0] for r in s_cur.execute("SELECT DISTINCT district FROM colleges").fetchall() if r[0]]
+                    cities_districts = sorted(list(set(c_list + d_list)))
+                if not colleges:
+                    for r in s_cur.execute("SELECT college_code, college_name, city, district, college_type, funding_type FROM colleges ORDER BY college_name ASC").fetchall():
+                        code = str(r[0]).zfill(5)
+                        inst_meta = INSTITUTES_DATA.get(code)
+                        col_status = inst_meta.get("status") if inst_meta else r[5]
+                        colleges.append(CollegeOption(
+                            college_code=r[0],
+                            college_name=r[1],
+                            city=r[2],
+                            district=r[3],
+                            college_type=r[4],
+                            funding_type=r[5],
+                            status=col_status
+                        ))
+                if not courses:
+                    courses = [CourseOption(course_code=r[0], course_name=r[1]) for r in s_cur.execute("SELECT DISTINCT course_code, course_name FROM courses ORDER BY course_name ASC").fetchall()]
+        except Exception:
+            pass
 
     # Collect unique web-scraped statuses
-    from app.parser.institutes_data import INSTITUTES_DATA
     scraped_statuses = set(v.get("status") for v in INSTITUTES_DATA.values() if v.get("status"))
-    try:
-        from sqlalchemy import text
-        db_statuses = [r[0] for r in db.execute(text("SELECT DISTINCT status FROM institutes WHERE status IS NOT NULL AND status != ''")).all() if r[0]]
-        scraped_statuses.update(db_statuses)
-    except Exception:
-        pass
+    if cutoff_db_path.exists():
+        try:
+            with sqlite3.connect(str(cutoff_db_path)) as s_conn:
+                s_cur = s_conn.cursor()
+                for r in s_cur.execute("SELECT DISTINCT status FROM institutes WHERE status IS NOT NULL AND status != ''").fetchall():
+                    if r[0]:
+                        scraped_statuses.add(r[0])
+        except Exception:
+            pass
     statuses = sorted(list(scraped_statuses))
-
-    # Colleges
-    college_rows = db.execute(
-        select(College.college_code, College.college_name, College.city, College.district, College.college_type, College.funding_type)
-        .order_by(College.college_name.asc())
-    ).all()
-    colleges = []
-    for r in college_rows:
-        code = str(r[0]).zfill(5)
-        inst_meta = INSTITUTES_DATA.get(code)
-        col_status = inst_meta.get("status") if inst_meta else r[5]
-        colleges.append(
-            CollegeOption(
-                college_code=r[0],
-                college_name=r[1],
-                city=r[2],
-                district=r[3],
-                college_type=r[4],
-                funding_type=r[5],
-                status=col_status
-            )
-        )
-
-    # Courses (distinct by course_name)
-    course_rows = db.execute(
-        select(Course.course_code, Course.course_name)
-        .distinct()
-        .order_by(Course.course_name.asc())
-    ).all()
-    courses = [
-        CourseOption(
-            course_code=r[0],
-            course_name=r[1]
-        )
-        for r in course_rows
-    ]
 
     return FilterOptions(
         years=years,
@@ -202,6 +261,7 @@ def get_filter_options(
         colleges=colleges,
         courses=courses
     )
+
 
 
 @router.get("/summary", response_model=CutoffSummary)

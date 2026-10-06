@@ -12,15 +12,24 @@ db_url = settings.DATABASE_URL
 if db_url.startswith("sqlite"):
     connect_args["check_same_thread"] = False
     connect_args["timeout"] = 30.0
-    # If using relative sqlite path, resolve to project root directory
-    if "sqlite:///./" in db_url:
-        db_filename = db_url.split("sqlite:///./")[-1]
-        db_file = Path(__file__).resolve().parent.parent.parent / db_filename
-        db_url = f"sqlite:///{db_file.as_posix()}"
-    elif db_url == "sqlite:///cap_portal.db":
-        db_file = Path(__file__).resolve().parent.parent.parent / "cap_portal.db"
-        db_url = f"sqlite:///{db_file.as_posix()}"
+    if "sqlite:///" in db_url:
+        db_raw_name = db_url.replace("sqlite:///./", "").replace("sqlite:///", "")
+        app_file = Path(__file__).resolve().parent.parent / db_raw_name
+        root_file = Path(__file__).resolve().parent.parent.parent / db_raw_name
+        cwd_file = Path.cwd() / db_raw_name
+
+        if app_file.exists():
+            resolved_file = app_file
+        elif root_file.exists():
+            resolved_file = root_file
+        elif cwd_file.exists():
+            resolved_file = cwd_file
+        else:
+            resolved_file = app_file
+
+        db_url = f"sqlite:///{resolved_file.as_posix()}"
     engine = create_engine(db_url, connect_args=connect_args)
+
 
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_connection, connection_record):

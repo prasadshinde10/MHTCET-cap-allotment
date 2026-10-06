@@ -6,16 +6,17 @@ from pathlib import Path
 
 # Path to dedicated bits.db
 def get_bits_db_path() -> Path:
-    root_path = Path(__file__).resolve().parent.parent.parent / "bits.db"
-    if root_path.exists():
-        return root_path
     app_path = Path(__file__).resolve().parent.parent / "bits.db"
     if app_path.exists():
         return app_path
+    root_path = Path(__file__).resolve().parent.parent.parent / "bits.db"
+    if root_path.exists():
+        return root_path
     cwd_path = Path.cwd() / "bits.db"
     if cwd_path.exists():
         return cwd_path
-    return root_path
+    return app_path
+
 
 def get_bits_connection() -> sqlite3.Connection:
     db_path = get_bits_db_path()

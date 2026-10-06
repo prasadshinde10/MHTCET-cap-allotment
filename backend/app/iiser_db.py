@@ -6,16 +6,17 @@ from pathlib import Path
 
 # Path to dedicated iiser.db
 def get_iiser_db_path() -> Path:
-    root_path = Path(__file__).resolve().parent.parent.parent / "iiser.db"
-    if root_path.exists():
-        return root_path
     app_path = Path(__file__).resolve().parent.parent / "iiser.db"
     if app_path.exists():
         return app_path
+    root_path = Path(__file__).resolve().parent.parent.parent / "iiser.db"
+    if root_path.exists():
+        return root_path
     cwd_path = Path.cwd() / "iiser.db"
     if cwd_path.exists():
         return cwd_path
-    return root_path
+    return app_path
+
 
 def get_iiser_connection() -> sqlite3.Connection:
     db_path = get_iiser_db_path()

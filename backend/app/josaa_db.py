@@ -5,28 +5,28 @@ from pathlib import Path
 
 # Resolve path to josaa.db
 def get_josaa_db_path() -> Path:
-    # 1. Project root
-    root_path = Path(__file__).resolve().parent.parent.parent / "josaa.db"
-    if root_path.exists():
-        return root_path
-    
-    # 2. App root (inside Docker /app/josaa.db)
+    # 1. App root (inside Docker /app/josaa.db or backend/josaa.db)
     app_path = Path(__file__).resolve().parent.parent / "josaa.db"
     if app_path.exists():
         return app_path
+
+    # 2. Project root
+    root_path = Path(__file__).resolve().parent.parent.parent / "josaa.db"
+    if root_path.exists():
+        return root_path
 
     # 3. Current working directory
     cwd_path = Path.cwd() / "josaa.db"
     if cwd_path.exists():
         return cwd_path
     
-    # 4. Desktopossa fallback
+    # 4. Desktop fallback
     desktop_jossa = Path(r"C:\Users\HP\OneDrive\Desktop\jossa\database\josaa.db")
     if desktop_jossa.exists():
         return desktop_jossa
 
-    # Default fallback
-    return root_path
+    # Default fallback to writable app_path
+    return app_path
 
 def get_josaa_connection() -> sqlite3.Connection:
     db_path = get_josaa_db_path()

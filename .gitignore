@@ -24,7 +24,7 @@ htmlcov/
 .ruff_cache/
 
 # ==============================================================================
-# Databases & SQLite files (Do not push heavy local DB binaries)
+# Databases & SQLite files (Ignore journals/temporary, track backend DBs for container build)
 # ==============================================================================
 *.db
 *.db-journal
@@ -32,9 +32,9 @@ htmlcov/
 *.db-wal
 *.sqlite
 *.sqlite3
-josaa.db
-cap_portal.db
-cutoff.db
+!backend/*.db
+
+
 
 # ==============================================================================
 # PDF files & local storage uploads/backups
