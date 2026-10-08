@@ -6,6 +6,7 @@ from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
 import logging
 import os
+import threading
 
 # Router configurations
 from app.api.router import api_router
@@ -54,7 +55,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE cutoffs ALTER COLUMN seat_location TYPE VARCHAR(100);",
             "ALTER TABLE medical_cutoffs ADD COLUMN IF NOT EXISTS counselling_type VARCHAR(20) DEFAULT 'state';",
             "CREATE INDEX IF NOT EXISTS ix_med_cutoffs_counselling_type ON medical_cutoffs(counselling_type);",
-            "UPDATE medical_cutoffs SET counselling_type = 'central' WHERE exam_name LIKE '%MCC%' AND (counselling_type IS NULL OR counselling_type = 'state');"
+            "UPDATE medical_cutoffs SET counselling_type = 'central' WHERE exam_name LIKE '%%MCC%%' AND (counselling_type IS NULL OR counselling_type = 'state');"
         ]
         for stmt in migration_stmts:
             try:
@@ -73,12 +74,16 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         seed_admin_user(db)
-        auto_seed_medical_database_if_empty()
-        logger.info("Application startup complete")
+        logger.info("Admin user check complete")
     except Exception as e:
-        logger.error(f"Error during startup: {e}")
+        logger.error(f"Error during admin seed: {e}")
     finally:
         db.close()
+
+    # Launch medical database seeding in a background thread so port binding is instant (< 1 second)
+    threading.Thread(target=auto_seed_medical_database_if_empty, daemon=True, name="medical_seeder").start()
+    logger.info("Application startup complete (medical seeder launched in background)")
+
     yield
     logger.info("Application shutdown")
 
