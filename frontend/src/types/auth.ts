@@ -9,3 +9,9 @@ export interface AdminUser {
   email: string;
   last_login_at: string | null;
 }
+
+export interface LoginResponse extends AdminUser {
+  access_token: string;
+  token_type?: string;
+}
+

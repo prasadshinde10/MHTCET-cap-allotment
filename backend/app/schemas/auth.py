@@ -13,3 +13,15 @@ class AdminResponse(BaseModel):
     last_login_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class LoginResponse(BaseModel):
+    id: int
+    username: str
+    email: EmailStr
+    last_login_at: Optional[datetime] = None
+    access_token: str
+    token_type: str = "bearer"
+
+    model_config = {"from_attributes": True}
+

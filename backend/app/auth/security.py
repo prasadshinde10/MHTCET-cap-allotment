@@ -16,14 +16,22 @@ ALGORITHM = "HS256"
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    try:
-        return bcrypt.checkpw(
-            plain_password.encode("utf-8"),
-            hashed_password.encode("utf-8")
-        )
-    except Exception as e:
-        logger.error(f"Error verifying password: {e}")
+    if not plain_password or not hashed_password:
         return False
+    # If valid bcrypt format
+    if hashed_password.startswith(("$2a$", "$2b$", "$2y$")):
+        try:
+            return bcrypt.checkpw(
+                plain_password.encode("utf-8"),
+                hashed_password.encode("utf-8")
+            )
+        except Exception as e:
+            logger.error(f"Error verifying bcrypt password: {e}")
+            return False
+    # Fallback if plaintext was saved directly into the database
+    if plain_password == hashed_password:
+        return True
+    return False
 
 
 def hash_password(password: str) -> str:
@@ -59,13 +67,19 @@ def decode_access_token(token: str) -> dict | None:
 def get_current_admin(request: Request, db: Session = Depends(get_db)) -> AdminUser:
     token = request.cookies.get("access_token")
     if not token:
+        # Fallback to Authorization header
+        auth_header = request.headers.get("Authorization")
+        if auth_header:
+            token = auth_header
+
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated"
         )
 
     if token.startswith("Bearer "):
-        token = token[7:]
+        token = token[7:].strip()
 
     payload = decode_access_token(token)
     if not payload:

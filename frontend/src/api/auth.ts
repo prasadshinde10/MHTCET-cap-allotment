@@ -1,10 +1,10 @@
 import { apiClient } from './client';
-import { AdminUser, LoginCredentials } from '../types/auth';
+import { AdminUser, LoginCredentials, LoginResponse } from '../types/auth';
 import { MessageResponse } from '../types/common';
 
 export const authApi = {
-  login: async (credentials: LoginCredentials): Promise<AdminUser> => {
-    const { data } = await apiClient.post<AdminUser>('/auth/login', credentials);
+  login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
+    const { data } = await apiClient.post<LoginResponse>('/auth/login', credentials);
     return data;
   },
 

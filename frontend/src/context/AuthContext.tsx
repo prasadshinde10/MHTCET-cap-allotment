@@ -34,8 +34,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (credentials: LoginCredentials) => {
     try {
-      const userData = await authApi.login(credentials);
-      setUser(userData);
+      const responseData = await authApi.login(credentials);
+      if (responseData.access_token) {
+        localStorage.setItem('access_token', responseData.access_token);
+      }
+      setUser(responseData);
       toast.success('Logged in successfully');
     } catch (error: any) {
       toast.error(error.response?.data?.detail || 'Failed to login');
@@ -46,10 +49,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     try {
       await authApi.logout();
+    } catch (error) {
+      // Ignore logout errors
+    } finally {
+      localStorage.removeItem('access_token');
       setUser(null);
       window.location.href = '/login';
-    } catch (error) {
-      toast.error('Failed to logout');
     }
   };
 

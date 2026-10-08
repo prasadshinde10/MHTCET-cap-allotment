@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     # Authentication
     ADMIN_USERNAME: str = "admin"
     ADMIN_EMAIL: str = "admin@example.com"
+    ADMIN_PASSWORD: str = ""
     ADMIN_PASSWORD_HASH: str = "$2b$12$vCg5FomS/gQ5in6ZQmeKHedz8vVk8N7fStXChyqy5WLFERBsWcXtC"  # default: Admin@12345
     SECRET_KEY: str = "cap_super_secret_jwt_key_development_change_in_prod"
     JWT_EXPIRY_HOURS: int = 8

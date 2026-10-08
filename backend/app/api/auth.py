@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, func
 from datetime import datetime, timedelta, timezone
 import logging
 
 from app.database import get_db
 from app.models.admin_user import AdminUser
-from app.schemas.auth import LoginRequest, AdminResponse
+from app.schemas.auth import LoginRequest, AdminResponse, LoginResponse
 from app.schemas.common import MessageResponse
-from app.auth.security import verify_password, create_access_token, get_current_admin
+from app.auth.security import verify_password, hash_password, create_access_token, get_current_admin
 from app.auth.middleware import limiter
 from app.services.audit_service import log_audit
 from app.config import get_settings
@@ -17,7 +18,7 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
-@router.post("/login", response_model=AdminResponse)
+@router.post("/login", response_model=LoginResponse)
 @limiter.limit(f"{settings.LOGIN_MAX_ATTEMPTS}/{settings.LOGIN_LOCKOUT_MINUTES}minutes")
 def login(
     request: Request,
@@ -25,7 +26,17 @@ def login(
     login_data: LoginRequest,
     db: Session = Depends(get_db),
 ):
-    user = db.query(AdminUser).filter(AdminUser.username == login_data.username).first()
+    login_identifier = login_data.username.strip().lower()
+    user = (
+        db.query(AdminUser)
+        .filter(
+            or_(
+                func.lower(AdminUser.username) == login_identifier,
+                func.lower(AdminUser.email) == login_identifier,
+            )
+        )
+        .first()
+    )
 
     if not user:
         log_audit(
@@ -64,6 +75,10 @@ def login(
         )
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
+    # Successful login — upgrade plaintext hash to bcrypt if needed
+    if not user.password_hash.startswith(("$2a$", "$2b$", "$2y$")):
+        user.password_hash = hash_password(login_data.password)
+
     # Successful login — reset counters
     user.failed_login_attempts = 0
     user.locked_until = None
@@ -87,7 +102,14 @@ def login(
         getattr(request.client, "host", None),
     )
     logger.info(f"Admin login successful: {user.username}")
-    return user
+    return LoginResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        last_login_at=user.last_login_at,
+        access_token=access_token,
+        token_type="bearer",
+    )
 
 
 @router.post("/logout", response_model=MessageResponse)
