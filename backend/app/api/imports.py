@@ -481,32 +481,44 @@ def restore_official_cutoffs(
     }
 
 
+def get_cutoff_db_candidates() -> List[str]:
+    from app.config import get_settings
+    settings = get_settings()
+    target_dbs = []
+
+    search_dirs = [
+        Path.cwd(),
+        Path(__file__).resolve().parent.parent.parent,
+        Path(__file__).resolve().parent.parent,
+        Path(__file__).resolve().parent.parent.parent.parent,
+    ]
+
+    for d in search_dirs:
+        for name in ["cutoff.db", "cap_portal.db"]:
+            p = d / name
+            if p.exists() and str(p) not in target_dbs:
+                target_dbs.append(str(p))
+
+    if "sqlite" in settings.DATABASE_URL:
+        db_raw = settings.DATABASE_URL.replace("sqlite:///", "").replace("./", "")
+        for d in search_dirs:
+            p = d / db_raw
+            if p.exists() and str(p) not in target_dbs:
+                target_dbs.append(str(p))
+
+    if not target_dbs:
+        target_dbs = [str(Path.cwd() / "cutoff.db")]
+
+    return target_dbs
+
+
 @router.post("/scrape-institutes")
 def start_institute_scraper(
     current_admin: AdminUser = Depends(get_current_admin)
 ):
     """Triggers official MHT-CET institute directory and intake scraping in background."""
     from app.services.institute_scraper_service import trigger_institute_scraper
-    from app.config import get_settings
-    settings = get_settings()
-    root_dir = Path(__file__).resolve().parent.parent.parent.parent
-    target_dbs = []
-    if "sqlite" in settings.DATABASE_URL:
-        db_raw = settings.DATABASE_URL.replace("sqlite:///", "").replace("./", "")
-        db_p = Path(db_raw)
-        if not db_p.is_absolute():
-            db_p = root_dir / db_raw
-        if db_p.exists():
-            target_dbs.append(str(db_p))
-
-    for name in ["cutoff.db", "cap_portal.db"]:
-        p = root_dir / name
-        if p.exists() and str(p) not in target_dbs:
-            target_dbs.append(str(p))
-
-    if not target_dbs:
-        target_dbs = [str(root_dir / "cutoff.db")]
-
+    target_dbs = get_cutoff_db_candidates()
     res = trigger_institute_scraper(target_dbs)
     return res
 
