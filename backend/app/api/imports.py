@@ -1,6 +1,7 @@
 import os
 import shutil
 import hashlib
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Dict, Any
@@ -8,7 +9,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, s
 from sqlalchemy.orm import Session
 from sqlalchemy import select, desc, func
 
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app.config import get_settings
 from app.auth.security import get_current_admin
 from app.models.admin_user import AdminUser
@@ -169,63 +170,44 @@ def upload_pdf(
         message="Upload successful"
     )
 
-@router.post("/{batch_id}/process")
-def process_batch(
-    batch_id: int,
-    db: Session = Depends(get_db),
-    current_admin: AdminUser = Depends(get_current_admin)
-):
-    batch = db.get(ImportBatch, batch_id)
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
-    
-    if batch.status == "PROCESSING":
-        raise HTTPException(status_code=400, detail="Batch is currently being processed")
+_active_import_threads: Dict[int, threading.Thread] = {}
 
-    cap_round = db.get(CapRound, batch.cap_round_id)
-    if not cap_round:
-        raise HTTPException(status_code=400, detail="CapRound not found")
-
-    batch.status = "PROCESSING"
-    batch.started_at = datetime.now(timezone.utc)
-    db.commit()
-
-    resolved_path = Path(batch.file_path)
-    if not resolved_path.exists():
-        # Try relative to project root or backend
-        alt_path = Path(__file__).resolve().parent.parent.parent.parent / batch.file_path
-        if alt_path.exists():
-            resolved_path = alt_path
-        else:
-            alt_backend = Path(__file__).resolve().parent.parent.parent / batch.file_path
-            if alt_backend.exists():
-                resolved_path = alt_backend
-
+def _run_import_task(batch_id: int, file_path: str, cap_round_id: int):
+    """Background task worker to parse and ingest PDF imports asynchronously.
+    Runs on an isolated database session to prevent blocking the HTTP server or triggering gateway timeouts."""
+    task_db = SessionLocal()
     try:
+        batch = task_db.get(ImportBatch, batch_id)
+        cap_round = task_db.get(CapRound, cap_round_id)
+        if not batch or not cap_round:
+            logger.error(f"Background import task: Batch {batch_id} or CapRound {cap_round_id} not found")
+            return
+
+        resolved_path = Path(file_path)
         # Auto-detect/verify round directly from PDF content and sync batch if needed
         try:
             proc_detected_round = detect_pdf_round(resolved_path)
             if proc_detected_round and proc_detected_round != cap_round.round_number:
-                    logger.info(f"Auto-syncing batch {batch.id} round {cap_round.round_number} -> detected round {proc_detected_round} from PDF text.")
-                    target_cap_round = db.execute(
-                        select(CapRound).where(CapRound.year == cap_round.year, CapRound.round_number == proc_detected_round)
-                    ).scalar_one_or_none()
-                    if not target_cap_round:
-                        target_cap_round = CapRound(
-                            year=cap_round.year,
-                            round_number=proc_detected_round,
-                            round_name=f"CAP Round {proc_detected_round}"
-                        )
-                        db.add(target_cap_round)
-                        db.flush()
-                    cap_round = target_cap_round
-                    batch.cap_round_id = target_cap_round.id
-                    db.commit()
+                logger.info(f"Auto-syncing batch {batch.id} round {cap_round.round_number} -> detected round {proc_detected_round} from PDF text.")
+                target_cap_round = task_db.execute(
+                    select(CapRound).where(CapRound.year == cap_round.year, CapRound.round_number == proc_detected_round)
+                ).scalar_one_or_none()
+                if not target_cap_round:
+                    target_cap_round = CapRound(
+                        year=cap_round.year,
+                        round_number=proc_detected_round,
+                        round_name=f"CAP Round {proc_detected_round}"
+                    )
+                    task_db.add(target_cap_round)
+                    task_db.flush()
+                cap_round = target_cap_round
+                batch.cap_round_id = target_cap_round.id
+                task_db.commit()
         except Exception as e:
-            logger.warning(f"Could not verify PDF round in process_batch: {e}")
+            logger.warning(f"Could not verify PDF round in _run_import_task: {e}")
 
         importer = PDFImporter(
-            db_session=db,
+            db_session=task_db,
             import_batch_id=batch.id,
             file_path=str(resolved_path),
             year=cap_round.year,
@@ -242,30 +224,100 @@ def process_batch(
         batch.warning_count = result.warnings
         batch.error_count = result.errors
         
-        db.commit()
-        log_audit(db, "PROCESS_BATCH", "import_batches", batch.id, {"status": batch.status})
-        
-        return {
-            "status": batch.status,
-            "pages_processed": batch.pages_processed,
-            "records_created": batch.records_created,
-            "colleges_found": getattr(result, "colleges_found", 0),
-            "courses_found": getattr(result, "courses_found", 0),
-            "warnings": batch.warning_count,
-            "errors": batch.error_count
-        }
+        task_db.commit()
+        log_audit(task_db, "PROCESS_BATCH", "import_batches", batch.id, {"status": batch.status})
+        logger.info(f"Background import task for batch {batch_id} completed successfully with status {batch.status}.")
     except Exception as e:
-        logger.exception(f"Batch {batch_id} processing error: {e}")
+        logger.exception(f"Batch {batch_id} background processing error: {e}")
         try:
-            db.rollback()
-            failed_batch = db.get(ImportBatch, batch_id)
+            task_db.rollback()
+            failed_batch = task_db.get(ImportBatch, batch_id)
             if failed_batch:
                 failed_batch.status = "FAILED"
                 failed_batch.completed_at = datetime.now(timezone.utc)
-                db.commit()
+                task_db.commit()
         except Exception as rollback_err:
             logger.error(f"Error updating batch status after failure: {rollback_err}")
-        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        task_db.close()
+        _active_import_threads.pop(batch_id, None)
+
+@router.post("/{batch_id}/process")
+def process_batch(
+    batch_id: int,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin)
+):
+    batch = db.get(ImportBatch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    
+    # If a worker thread is already running for this batch, return immediate status
+    active_thread = _active_import_threads.get(batch_id)
+    if active_thread and active_thread.is_alive():
+        return {
+            "status": "PROCESSING",
+            "pages_processed": batch.pages_processed or 0,
+            "records_created": batch.records_created or 0,
+            "colleges_found": 0,
+            "courses_found": 0,
+            "warnings": batch.warning_count or 0,
+            "errors": batch.error_count or 0,
+            "message": "Parsing is currently running in background"
+        }
+
+    cap_round = db.get(CapRound, batch.cap_round_id)
+    if not cap_round:
+        raise HTTPException(status_code=400, detail="CapRound not found")
+
+    resolved_path = Path(batch.file_path)
+    if not resolved_path.exists():
+        # Try relative to project root or backend
+        alt_path = Path(__file__).resolve().parent.parent.parent.parent / batch.file_path
+        if alt_path.exists():
+            resolved_path = alt_path
+        else:
+            alt_backend = Path(__file__).resolve().parent.parent.parent / batch.file_path
+            if alt_backend.exists():
+                resolved_path = alt_backend
+            else:
+                candidate_name = UPLOAD_DIRECTORY / Path(batch.file_path).name
+                if candidate_name.exists():
+                    resolved_path = candidate_name
+                elif (UPLOAD_DIRECTORY / batch.filename).exists():
+                    resolved_path = UPLOAD_DIRECTORY / batch.filename
+
+    if not resolved_path.exists():
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded PDF file was not found on server disk (it may have been cleared during a server restart). Please re-upload the PDF to parse."
+        )
+
+    batch.status = "PROCESSING"
+    batch.started_at = datetime.now(timezone.utc)
+    batch.file_path = str(resolved_path)
+    db.commit()
+
+    # Launch background task thread to prevent Render/Cloudflare 100-second HTTP gateway timeout
+    t = threading.Thread(
+        target=_run_import_task,
+        args=(batch.id, str(resolved_path), cap_round.id),
+        daemon=True,
+        name=f"import-batch-{batch.id}"
+    )
+    _active_import_threads[batch.id] = t
+    t.start()
+
+    return {
+        "status": "PROCESSING",
+        "pages_processed": batch.pages_processed or 0,
+        "records_created": batch.records_created or 0,
+        "colleges_found": 0,
+        "courses_found": 0,
+        "warnings": batch.warning_count or 0,
+        "errors": batch.error_count or 0,
+        "message": "Parsing started in background"
+    }
 
 @router.get("/", response_model=PaginatedResponse[ImportBatchListItem])
 def list_batches(

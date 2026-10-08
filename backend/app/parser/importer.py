@@ -26,7 +26,7 @@ from app.parser.institutes_data import INSTITUTES_DATA
 
 logger = logging.getLogger(__name__)
 
-_COL_REGEX = re.compile(r"^(\d{5})\s*-\s*(.+)")
+_COL_REGEX = re.compile(r"^(\d{4,5})\s*-\s*(.+)")
 _CRS_REGEX = re.compile(r"^(\d{9,11}[A-Z]?)\s*-\s*(.+)")
 
 
@@ -292,13 +292,13 @@ class PDFImporter:
                         col_minority_type = None
 
                     col_obj = College(
-                        college_code=clean_inst_code.zfill(5),
+                        college_code=clean_inst_code.zfill(5)[:20],
                         college_name=col_name[:500],
                         city=(col_district or "")[:200],
                         district=(col_district or "")[:200],
                         college_type=(col_type or "Unknown")[:200],
                         funding_type=(col_funding or "Unknown")[:200],
-                        minority_status=col_minority_status,
+                        minority_status=col_minority_status[:20],
                         minority_type=col_minority_type,
                         home_university=(col_univ or "")[:300],
                         status="Active"
@@ -320,8 +320,8 @@ class PDFImporter:
                 if not crs_obj:
                     crs_obj = Course(
                         college_id=col_obj.id,
-                        course_code=clean_choice_code,
-                        course_name=course_name
+                        course_code=clean_choice_code[:20],
+                        course_name=course_name[:500]
                     )
                     self.db.add(crs_obj)
                     self.db.flush()
@@ -391,7 +391,7 @@ class PDFImporter:
         # Update Batch status
         batch = self.db.get(ImportBatch, self.batch_id)
         if batch:
-            batch.status = "COMPLETED"
+            batch.status = "COMPLETED_WITH_WARNINGS" if result.warnings > 0 or result.errors > 0 else "COMPLETED"
             batch.pages_processed = result.pages_processed
             batch.records_created = result.records_created
             batch.warning_count = result.warnings
@@ -573,13 +573,13 @@ class PDFImporter:
                             col_minority_type = None
 
                         col_obj = College(
-                            college_code=clean_code_5,
+                            college_code=clean_code_5[:20],
                             college_name=col_name[:500],
                             city=(col_district or "")[:200],
                             district=(col_district or "")[:200],
                             college_type=(col_type or "Unknown")[:200],
                             funding_type=(col_funding or "Unknown")[:200],
-                            minority_status=col_minority_status,
+                            minority_status=col_minority_status[:20],
                             minority_type=col_minority_type,
                             home_university=(col_univ or "")[:300],
                             status="Active"
@@ -602,7 +602,7 @@ class PDFImporter:
                     if not crs_obj:
                         crs_obj = Course(
                             college_id=col_obj.id,
-                            course_code=clean_crs_code[:50],
+                            course_code=clean_crs_code[:20],
                             course_name=(current_course_name or "Engineering Course")[:500]
                         )
                         self.db.add(crs_obj)
@@ -644,15 +644,26 @@ class PDFImporter:
                             parts = cell_clean.split("\n")
                             rank_str = parts[0].strip()
                             perc_str = parts[1].strip() if len(parts) >= 2 else ""
-                            perc_str = perc_str.replace("(", "").replace(")", "").strip()
 
                             stage_str = normalize_stage(raw_stage, cat_clean)
 
+                            clean_rank_str = rank_str.replace(",", "").replace(" ", "").replace("(", "").replace(")", "").strip()
+                            rank = int(clean_rank_str) if clean_rank_str.isdigit() else None
+                            if rank is not None and (rank < 0 or rank > 2147483647):
+                                rank = None
+
+                            clean_perc_str = perc_str.replace("(", "").replace(")", "").replace("%", "").replace(",", "").strip()
                             try:
-                                rank = int(rank_str)
-                                if rank < 0 or rank > 2147483647:
-                                    rank = None
-                                perc = round(float(perc_str), 7) if perc_str else None
+                                perc = round(float(clean_perc_str), 7) if clean_perc_str else None
+                                if perc is not None and (perc < 0.0 or perc > 100.0):
+                                    perc = None
+                            except (ValueError, TypeError):
+                                perc = None
+
+                            if rank is None and perc is None:
+                                continue
+
+                            try:
                                 seat_category = parse_category_meta(cat_clean)
                                 reservation_level = parse_reservation_level(quota_title, cat_clean)
 
@@ -760,7 +771,7 @@ class PDFImporter:
         # Update Batch status
         batch = self.db.get(ImportBatch, self.batch_id)
         if batch:
-            batch.status = "COMPLETED"
+            batch.status = "COMPLETED_WITH_WARNINGS" if result.warnings > 0 or result.errors > 0 else "COMPLETED"
             batch.pages_processed = result.pages_processed
             batch.records_created = result.records_created
             batch.warning_count = result.warnings

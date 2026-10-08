@@ -70,6 +70,32 @@ export function ImportNewPage() {
     ? Math.min(100, Math.round((pagesProcessed / totalPages) * 100))
     : (isProcessing ? 4 : 0);
 
+  // Monitor background batch parsing progress to completion
+  useEffect(() => {
+    if (!isProcessing || !batchProgress) return;
+
+    if (batchProgress.status === 'COMPLETED' || batchProgress.status === 'COMPLETED_WITH_WARNINGS') {
+      setIsProcessing(false);
+      setParseResult({
+        status: batchProgress.status,
+        pages_processed: batchProgress.pages_processed,
+        records_created: batchProgress.records_created,
+        colleges_found: 0,
+        courses_found: 0,
+        warnings: batchProgress.warning_count,
+        errors: batchProgress.error_count,
+      });
+      toast.success(`Parsing complete! Ingested ${batchProgress.records_created.toLocaleString()} cutoff records.`);
+      refetchDbStatus();
+      queryClient.invalidateQueries({ queryKey: ['cutoffs'] });
+      queryClient.invalidateQueries({ queryKey: ['filterOptions'] });
+      queryClient.invalidateQueries({ queryKey: ['dbStatus'] });
+    } else if (batchProgress.status === 'FAILED') {
+      setIsProcessing(false);
+      toast.error('Parsing failed. Please check server logs or re-upload the PDF.');
+    }
+  }, [batchProgress?.status, batchProgress?.records_created, isProcessing]);
+
   // Fetch live database statistics
   const { data: dbStatus, refetch: refetchDbStatus, isFetching: isFetchingStats } = useQuery({
     queryKey: ['dbStatus'],
@@ -245,12 +271,17 @@ export function ImportNewPage() {
       setIsProcessing(true);
     },
     onSuccess: (data) => {
-      toast.success(`Parsing complete! Created ${data.records_created.toLocaleString()} cutoff records.`);
-      setIsProcessing(false);
-      setParseResult(data);
-      refetchDbStatus();
-      queryClient.invalidateQueries({ queryKey: ['cutoffs'] });
-      queryClient.invalidateQueries({ queryKey: ['filterOptions'] });
+      if (data.status === 'PROCESSING') {
+        toast.info('PDF extraction started in background. Polling progress...');
+        setIsProcessing(true);
+      } else {
+        toast.success(`Parsing complete! Ingested ${data.records_created.toLocaleString()} cutoff records.`);
+        setIsProcessing(false);
+        setParseResult(data);
+        refetchDbStatus();
+        queryClient.invalidateQueries({ queryKey: ['cutoffs'] });
+        queryClient.invalidateQueries({ queryKey: ['filterOptions'] });
+      }
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.detail || error.message || 'Parsing failed');
