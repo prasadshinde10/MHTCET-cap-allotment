@@ -43,7 +43,14 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE colleges ALTER COLUMN city TYPE VARCHAR(200);",
             "ALTER TABLE colleges ALTER COLUMN district TYPE VARCHAR(200);",
             "ALTER TABLE courses ALTER COLUMN course_name TYPE VARCHAR(500);",
-            "ALTER TABLE courses ALTER COLUMN course_code TYPE VARCHAR(50);"
+            "ALTER TABLE courses ALTER COLUMN course_code TYPE VARCHAR(50);",
+            "ALTER TABLE cutoffs ALTER COLUMN stage TYPE VARCHAR(50);",
+            "ALTER TABLE cutoffs ALTER COLUMN seat_section TYPE VARCHAR(200);",
+            "ALTER TABLE cutoffs ALTER COLUMN seat_section_raw TYPE VARCHAR(500);",
+            "ALTER TABLE cutoffs ALTER COLUMN category_code TYPE VARCHAR(100);",
+            "ALTER TABLE cutoffs ALTER COLUMN gender TYPE VARCHAR(50);",
+            "ALTER TABLE cutoffs ALTER COLUMN seat_category TYPE VARCHAR(100);",
+            "ALTER TABLE cutoffs ALTER COLUMN seat_location TYPE VARCHAR(100);"
         ]
         for stmt in migration_stmts:
             try:
