@@ -345,29 +345,14 @@ def reset_database(
     from app.config import get_settings
     settings = get_settings()
 
-    backup_dir = Path(__file__).resolve().parent.parent.parent.parent / "storage" / "backups"
+    backup_dir = Path.cwd() / "storage" / "backups"
+    if not backup_dir.exists():
+        backup_dir = Path(__file__).resolve().parent.parent.parent / "storage" / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_file_name = None
 
-    # Identify database file(s) to backup and clear
-    root_dir = Path(__file__).resolve().parent.parent.parent.parent
-    target_dbs = []
-    
-    # Check DATABASE_URL
-    if "sqlite" in settings.DATABASE_URL:
-        db_raw = settings.DATABASE_URL.replace("sqlite:///", "").replace("./", "")
-        db_p = Path(db_raw)
-        if not db_p.is_absolute():
-            db_p = root_dir / db_raw
-        if db_p.exists():
-            target_dbs.append(db_p)
-
-    # Always ensure both cutoff.db and cap_portal.db in root are covered
-    for name in ["cutoff.db", "cap_portal.db"]:
-        p = root_dir / name
-        if p.exists() and p not in target_dbs:
-            target_dbs.append(p)
+    target_dbs = [Path(p) for p in get_cutoff_db_candidates()]
 
     import sqlite3
     for db_path in target_dbs:
@@ -423,29 +408,19 @@ def restore_official_cutoffs(
     import sqlite3
     from app.config import get_settings
     settings = get_settings()
-    root_dir = Path(__file__).resolve().parent.parent.parent.parent
-    backup_file = root_dir / "storage" / "backups" / "cutoff_backup_20261002_full_verified_111560.db"
+    backup_dir = Path.cwd() / "storage" / "backups"
+    if not backup_dir.exists():
+        backup_dir = Path(__file__).resolve().parent.parent.parent / "storage" / "backups"
+    backup_file = backup_dir / "cutoff_backup_20261002_full_verified_111560.db"
 
     if not backup_file.exists():
-        backups = list((root_dir / "storage" / "backups").glob("cutoff_backup_*.db"))
+        backups = list(backup_dir.glob("cutoff_backup_*.db"))
         if backups:
             backup_file = sorted(backups)[-1]
         else:
             raise HTTPException(status_code=404, detail="Pristine backup file not found in storage/backups")
 
-    target_dbs = []
-    if "sqlite" in settings.DATABASE_URL:
-        db_raw = settings.DATABASE_URL.replace("sqlite:///", "").replace("./", "")
-        db_p = Path(db_raw)
-        if not db_p.is_absolute():
-            db_p = root_dir / db_raw
-        if db_p.exists():
-            target_dbs.append(db_p)
-
-    for name in ["cutoff.db", "cap_portal.db"]:
-        p = root_dir / name
-        if p.exists() and p not in target_dbs:
-            target_dbs.append(p)
+    target_dbs = [Path(p) for p in get_cutoff_db_candidates()]
 
     restored_count = 0
     tables = [

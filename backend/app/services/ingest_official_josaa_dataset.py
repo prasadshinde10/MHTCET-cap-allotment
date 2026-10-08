@@ -16,10 +16,10 @@ BASE_REPO_URL = "https://raw.githubusercontent.com/Harith-Y/JoSAA-CSAB-Closing-R
 
 ROUNDS = [1, 2, 3, 4, 5]
 
+from app.josaa_db import get_josaa_db_path
+
 def get_db_path() -> Path:
-    # 4 levels up: backend/app/services/ingest_official_josaa_dataset.py -> root
-    root_path = Path(__file__).resolve().parent.parent.parent.parent / "josaa.db"
-    return root_path
+    return get_josaa_db_path()
 
 def init_tables(cursor):
     cursor.execute("""

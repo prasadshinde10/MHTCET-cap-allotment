@@ -53,10 +53,11 @@ josaa_scraper_state: Dict[str, Any] = {
 }
 
 
+from app.josaa_db import get_josaa_db_path
+
+
 def get_db_path() -> Path:
-    # 4 levels up to project root: backend/app/services/scrape_josaa_official.py -> root
-    root_path = Path(__file__).resolve().parent.parent.parent.parent / "josaa.db"
-    return root_path
+    return get_josaa_db_path()
 
 
 def get_asp_fields(soup: BeautifulSoup) -> Dict[str, str]:
