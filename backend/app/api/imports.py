@@ -214,7 +214,6 @@ def process_batch(
                         target_cap_round = CapRound(
                             year=cap_round.year,
                             round_number=proc_detected_round,
-                            academic_year=f"{cap_round.year}-{str(cap_round.year + 1)[-2:]}",
                             round_name=f"CAP Round {proc_detected_round}"
                         )
                         db.add(target_cap_round)

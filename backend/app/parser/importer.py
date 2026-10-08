@@ -181,18 +181,18 @@ class PDFImporter:
                     score = r.get("merit_percentile")
                 ai_objs.append(AllIndiaCutoffRecord(
                     cap_round=r["cap_round"],
-                    academic_year=r.get("academic_year"),
+                    academic_year=str(r.get("academic_year") or "")[:50] if r.get("academic_year") else None,
                     sr_no=r.get("sr_no"),
                     merit_rank=r["merit_rank"],
                     merit_percentile=float(score or 0.0),
-                    choice_code=r["choice_code"],
-                    college_code=r.get("institute_code", ""),
-                    college_name=r.get("institute_name", ""),
-                    course_name=r.get("course_name", ""),
-                    merit_exam=r.get("merit_exam"),
-                    type=r.get("type"),
-                    seat_type=r.get("seat_type"),
-                    source_pdf=r.get("source_pdf"),
+                    choice_code=str(r["choice_code"])[:50],
+                    college_code=str(r.get("institute_code", ""))[:50],
+                    college_name=str(r.get("institute_name", ""))[:500],
+                    course_name=str(r.get("course_name", ""))[:500],
+                    merit_exam=str(r.get("merit_exam", ""))[:100] if r.get("merit_exam") else None,
+                    type=str(r.get("type", ""))[:100] if r.get("type") else None,
+                    seat_type=str(r.get("seat_type", ""))[:100] if r.get("seat_type") else None,
+                    source_pdf=str(r.get("source_pdf", ""))[:500] if r.get("source_pdf") else None,
                     page_number=r.get("page_number")
                 ))
             if ai_objs:
@@ -339,16 +339,16 @@ class PDFImporter:
                     course_id=crs_obj.id,
                     import_batch_id=self.batch_id,
                     seat_section="All India Seats (AI)",
-                    seat_section_raw=rec.get("seat_type") or "AI",
+                    seat_section_raw=str(rec.get("seat_type") or "AI")[:500],
                     category_code="AI",
                     gender="General",
-                    seat_category=rec.get("seat_type") or "AI",
+                    seat_category=str(rec.get("seat_type") or "AI")[:100],
                     seat_location="All India",
                     stage="AI",
                     merit_number=rec.get("merit_rank"),
                     percentile=clean_percentile,
                     source_page=rec.get("page_number", page_idx + 1),
-                    source_pdf=pdf_path.name
+                    source_pdf=pdf_path.name[:500]
                 )
                 new_cutoffs.append(cutoff_entry)
                 raw_ai_records.append(rec)
@@ -646,17 +646,17 @@ class PDFImporter:
                                     cap_round_id=self.cap_round_id,
                                     course_id=crs_obj.id,
                                     import_batch_id=self.batch_id,
-                                    seat_section=quota_title or reservation_level or "State Level",
-                                    seat_section_raw=quota_title,
-                                    category_code=cat_clean,
-                                    gender=gender,
-                                    seat_category=seat_category,
-                                    seat_location=reservation_level,
-                                    stage=stage_str,
+                                    seat_section=str(quota_title or reservation_level or "State Level")[:200],
+                                    seat_section_raw=str(quota_title)[:500] if quota_title else None,
+                                    category_code=cat_clean[:100],
+                                    gender=gender[:50],
+                                    seat_category=str(seat_category)[:100] if seat_category else None,
+                                    seat_location=str(reservation_level)[:100] if reservation_level else None,
+                                    stage=stage_str[:50],
                                     merit_number=rank,
                                     percentile=perc,
                                     source_page=page_idx + 1,
-                                    source_pdf=pdf_path.name
+                                    source_pdf=pdf_path.name[:500]
                                 )
                                 new_cutoffs.append(cutoff_entry)
 
