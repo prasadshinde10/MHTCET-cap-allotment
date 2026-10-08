@@ -274,15 +274,6 @@ def upload_medical_pdf_endpoint(
         with open(target_path, "wb") as f:
             f.write(content)
 
-        # Inspect total pages for accurate immediate progress setup
-        total_pages = 1
-        try:
-            doc = fitz.open(str(target_path))
-            total_pages = len(doc)
-            doc.close()
-        except Exception:
-            pass
-
         task_id = f"med_{int(time.time())}_{uuid.uuid4().hex[:6]}"
         ACTIVE_MEDICAL_IMPORT_TASKS[task_id] = {
             "task_id": task_id,
@@ -290,9 +281,9 @@ def upload_medical_pdf_endpoint(
             "status": "PROCESSING",
             "progress_percent": 5,
             "current_page": 0,
-            "total_pages": total_pages,
+            "total_pages": 0,
             "records_created": 0,
-            "current_action": f"PDF uploaded successfully ({total_pages} pages). Starting extraction...",
+            "current_action": "PDF uploaded successfully. Starting background extraction...",
             "started_at": time.time(),
             "finished_at": None,
             "error": None,
@@ -313,10 +304,10 @@ def upload_medical_pdf_endpoint(
             "task_id": task_id,
             "status": "PROCESSING",
             "filename": file.filename,
-            "total_pages": total_pages,
+            "total_pages": 0,
             "progress_percent": 5,
-            "current_action": f"PDF uploaded successfully ({total_pages} pages). Starting extraction...",
-            "message": f"Medical PDF uploaded ({total_pages} pages). Background parsing started."
+            "current_action": "PDF uploaded successfully. Starting background extraction...",
+            "message": "Medical PDF uploaded. Background parsing started."
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Medical PDF upload failed: {str(e)}")

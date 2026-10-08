@@ -126,15 +126,27 @@ def _init_single_sqlite_db(conn: sqlite3.Connection):
             );
         """)
 
+        # Migration: Ensure counselling_type column exists
+        try:
+            cur.execute("PRAGMA table_info(medical_cutoffs);")
+            mc_cols = [row[1] for row in cur.fetchall()]
+            if "counselling_type" not in mc_cols:
+                cur.execute("ALTER TABLE medical_cutoffs ADD COLUMN counselling_type TEXT DEFAULT 'state';")
+                cur.execute("UPDATE medical_cutoffs SET counselling_type = 'central' WHERE exam_name LIKE '%MCC%';")
+                cur.execute("UPDATE medical_cutoffs SET counselling_type = 'state' WHERE counselling_type IS NULL OR (counselling_type != 'central' AND exam_name NOT LIKE '%MCC%');")
+        except Exception as mig_err:
+            logger.warning(f"Error checking counselling_type column: {mig_err}")
+
         # Indexes
         cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_year ON medical_cutoffs(academic_year);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_round ON medical_cutoffs(round);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_college ON medical_cutoffs(college_id);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_course ON medical_cutoffs(course_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_college ON medical_colleges(id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_course ON medical_courses(id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_category ON medical_cutoffs(base_category);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_quota ON medical_cutoffs(quota_category);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_closing_rank ON medical_cutoffs(closing_rank);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_closing_score ON medical_cutoffs(closing_score);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_counselling_type ON medical_cutoffs(counselling_type);")
 
         conn.commit()
     finally:
@@ -182,80 +194,97 @@ def auto_seed_medical_database_if_empty():
         crs_map = {}
         total_seeded = 0
 
-        with engine.begin() as conn:
-            for p, ctype in [(p_c, "central"), (p_s, "state")]:
-                if not p.exists():
-                    logger.warning(f"[Medical] Seed file not found: {p}")
+        for p, ctype in [(p_c, "central"), (p_s, "state")]:
+            if not p.exists():
+                logger.warning(f"[Medical] Seed file not found: {p}")
+                continue
+
+            src = sqlite3.connect(str(p))
+            src.row_factory = sqlite3.Row
+            scur = src.cursor()
+
+            # 1. Bulk insert colleges
+            scur.execute("SELECT * FROM medical_colleges")
+            cols_payload = []
+            seen_c = set()
+            for r in scur.fetchall():
+                code = r["college_code"]
+                if code not in seen_c:
+                    seen_c.add(code)
+                    cols_payload.append({
+                        "code": code,
+                        "name": r["college_name"],
+                        "ctype": r.get("college_type") or "Government/Aided",
+                        "city": r.get("city"),
+                        "st": r.get("state") or ("Maharashtra" if ctype == "state" else "All India")
+                    })
+            if cols_payload:
+                with engine.begin() as conn:
+                    conn.execute(text("""
+                        INSERT INTO medical_colleges (college_code, college_name, college_type, city, state)
+                        VALUES (:code, :name, :ctype, :city, :st)
+                        ON CONFLICT (college_code) DO NOTHING
+                    """), cols_payload)
+
+            # 2. Bulk insert courses
+            scur.execute("SELECT * FROM medical_courses")
+            crs_payload = []
+            seen_crs = set()
+            for r in scur.fetchall():
+                code = r["course_code"]
+                if code not in seen_crs:
+                    seen_crs.add(code)
+                    crs_payload.append({
+                        "code": code,
+                        "name": r["course_name"],
+                        "dtype": r.get("degree_type") or "Medical (UG)"
+                    })
+            if crs_payload:
+                with engine.begin() as conn:
+                    conn.execute(text("""
+                        INSERT INTO medical_courses (course_code, course_name, degree_type)
+                        VALUES (:code, :name, :dtype)
+                        ON CONFLICT (course_code) DO NOTHING
+                    """), crs_payload)
+
+            # Retrieve current PostgreSQL IDs
+            with engine.connect() as conn:
+                col_map.update({row[0]: row[1] for row in conn.execute(text("SELECT college_code, id FROM medical_colleges")).fetchall()})
+                crs_map.update({row[0]: row[1] for row in conn.execute(text("SELECT course_code, id FROM medical_courses")).fetchall()})
+
+            # Map source IDs
+            scur.execute("SELECT id, college_code FROM medical_colleges")
+            src_col_to_code = {r["id"]: r["college_code"] for r in scur.fetchall()}
+            scur.execute("SELECT id, course_code FROM medical_courses")
+            src_crs_to_code = {r["id"]: r["course_code"] for r in scur.fetchall()}
+
+            # 3. Stream cutoffs in batches of 1,000 with separate fast transactions
+            scur.execute("SELECT * FROM medical_cutoffs")
+            batch = []
+            for r in scur.fetchall():
+                col_code = src_col_to_code.get(r["college_id"])
+                crs_code = src_crs_to_code.get(r["course_id"])
+                if not col_code or not crs_code or col_code not in col_map or crs_code not in crs_map:
                     continue
 
-                src = sqlite3.connect(str(p))
-                src.row_factory = sqlite3.Row
-                scur = src.cursor()
+                batch.append({
+                    "academic_year": r["academic_year"],
+                    "round": r["round"],
+                    "college_id": col_map[col_code],
+                    "course_id": crs_map[crs_code],
+                    "quota_category": r["quota_category"],
+                    "base_category": r["base_category"],
+                    "opening_rank": r["opening_rank"],
+                    "closing_rank": r["closing_rank"],
+                    "opening_score": r["opening_score"],
+                    "closing_score": r["closing_score"],
+                    "allotted_seats": r["allotted_seats"],
+                    "exam_name": r["exam_name"],
+                    "counselling_type": ctype,
+                })
 
-                # Colleges
-                scur.execute("SELECT * FROM medical_colleges")
-                for r in scur.fetchall():
-                    code = r["college_code"]
-                    if code not in col_map:
-                        res = conn.execute(
-                            text("""
-                                INSERT INTO medical_colleges (college_code, college_name, college_type, city, state)
-                                VALUES (:code, :name, :ctype, :city, :st)
-                                ON CONFLICT (college_code) DO UPDATE SET college_name = EXCLUDED.college_name
-                                RETURNING id
-                            """),
-                            {"code": code, "name": r["college_name"], "ctype": r["college_type"], "city": r["city"], "st": r["state"]}
-                        )
-                        col_map[code] = res.scalar()
-
-                # Courses
-                scur.execute("SELECT * FROM medical_courses")
-                for r in scur.fetchall():
-                    code = r["course_code"]
-                    if code not in crs_map:
-                        res = conn.execute(
-                            text("""
-                                INSERT INTO medical_courses (course_code, course_name, degree_type)
-                                VALUES (:code, :name, :dtype)
-                                ON CONFLICT (course_code) DO UPDATE SET course_name = EXCLUDED.course_name
-                                RETURNING id
-                            """),
-                            {"code": code, "name": r["course_name"], "dtype": r["degree_type"]}
-                        )
-                        crs_map[code] = res.scalar()
-
-                # Map IDs
-                scur.execute("SELECT id, college_code FROM medical_colleges")
-                src_col_to_code = {r["id"]: r["college_code"] for r in scur.fetchall()}
-                scur.execute("SELECT id, course_code FROM medical_courses")
-                src_crs_to_code = {r["id"]: r["course_code"] for r in scur.fetchall()}
-
-                # Cutoffs
-                scur.execute("SELECT * FROM medical_cutoffs")
-                batch = []
-                for r in scur.fetchall():
-                    col_code = src_col_to_code.get(r["college_id"])
-                    crs_code = src_crs_to_code.get(r["course_id"])
-                    if not col_code or not crs_code or col_code not in col_map or crs_code not in crs_map:
-                        continue
-
-                    batch.append({
-                        "academic_year": r["academic_year"],
-                        "round": r["round"],
-                        "college_id": col_map[col_code],
-                        "course_id": crs_map[crs_code],
-                        "quota_category": r["quota_category"],
-                        "base_category": r["base_category"],
-                        "opening_rank": r["opening_rank"],
-                        "closing_rank": r["closing_rank"],
-                        "opening_score": r["opening_score"],
-                        "closing_score": r["closing_score"],
-                        "allotted_seats": r["allotted_seats"],
-                        "exam_name": r["exam_name"],
-                        "counselling_type": ctype,
-                    })
-
-                    if len(batch) >= 2000:
+                if len(batch) >= 1000:
+                    with engine.begin() as conn:
                         conn.execute(text("""
                             INSERT INTO medical_cutoffs (
                                 academic_year, round, college_id, course_id, quota_category,
@@ -267,14 +296,13 @@ def auto_seed_medical_database_if_empty():
                                 :allotted_seats, :exam_name, :counselling_type
                             )
                             ON CONFLICT (academic_year, round, college_id, course_id, quota_category)
-                            DO UPDATE SET
-                                closing_rank = EXCLUDED.closing_rank,
-                                opening_rank = EXCLUDED.opening_rank
+                            DO NOTHING
                         """), batch)
-                        total_seeded += len(batch)
-                        batch = []
+                    total_seeded += len(batch)
+                    batch = []
 
-                if batch:
+            if batch:
+                with engine.begin() as conn:
                     conn.execute(text("""
                         INSERT INTO medical_cutoffs (
                             academic_year, round, college_id, course_id, quota_category,
@@ -286,16 +314,15 @@ def auto_seed_medical_database_if_empty():
                             :allotted_seats, :exam_name, :counselling_type
                         )
                         ON CONFLICT (academic_year, round, college_id, course_id, quota_category)
-                        DO UPDATE SET
-                            closing_rank = EXCLUDED.closing_rank,
-                            opening_rank = EXCLUDED.opening_rank
+                        DO NOTHING
                     """), batch)
-                    total_seeded += len(batch)
+                total_seeded += len(batch)
 
-                src.close()
+            src.close()
 
         logger.info(f"[Medical] Successfully auto-seeded {total_seeded:,} medical cutoffs into Supabase PostgreSQL!")
     except Exception as e:
+        logger.error(f"[Medical] Auto-seeding error (non-fatal): {e}")
         logger.error(f"[Medical] Error during auto-seeding: {e}", exc_info=True)
 
 
