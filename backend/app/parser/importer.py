@@ -112,7 +112,7 @@ def normalize_stage(stage_raw: str, cat_code: str = "") -> str:
         return "MH"
     if s_upper == "AI":
         return "AI"
-    return s.replace(" ", "")
+    return s.replace(" ", "")[:50]
 
 
 def extract_district(college_name: str) -> str:
@@ -535,9 +535,16 @@ class PDFImporter:
                     else:
                         governance_type = "Private"
 
-                    # Ensure College exists in DB
-                    if current_college_code not in college_cache:
-                        inst_meta = INSTITUTES_DATA.get(str(current_college_code).zfill(5))
+                    # Ensure College exists in DB (normalized leading zeros & multi-key cache)
+                    clean_col_code = str(current_college_code).strip()
+                    clean_code_5 = clean_col_code.zfill(5)
+                    col_obj = (
+                        college_cache.get(clean_code_5) or 
+                        college_cache.get(clean_col_code) or 
+                        college_cache.get(clean_col_code.lstrip('0'))
+                    )
+                    if not col_obj:
+                        inst_meta = INSTITUTES_DATA.get(clean_code_5) or INSTITUTES_DATA.get(clean_col_code.lstrip('0'))
                         if inst_meta:
                             col_district = inst_meta.get("district") or "Maharashtra"
                             col_type = inst_meta.get("college_type") or ("Autonomous" if "autonomous" in status_lower else "Non-Autonomous")
@@ -566,7 +573,7 @@ class PDFImporter:
                             col_minority_type = None
 
                         col_obj = College(
-                            college_code=current_college_code,
+                            college_code=clean_code_5,
                             college_name=col_name[:500],
                             city=(col_district or "")[:200],
                             district=(col_district or "")[:200],
@@ -579,23 +586,31 @@ class PDFImporter:
                         )
                         self.db.add(col_obj)
                         self.db.flush()
-                        college_cache[current_college_code] = col_obj
+                        college_cache[clean_code_5] = col_obj
+                        college_cache[clean_col_code.lstrip('0')] = col_obj
+                        college_cache[clean_col_code] = col_obj
                         new_colleges_count += 1
-                    col_obj = college_cache[current_college_code]
 
                     # Ensure Course exists in DB
-                    course_key = (col_obj.id, current_course_code)
-                    if course_key not in course_cache:
+                    clean_crs_code = str(current_course_code).strip()
+                    course_key = (col_obj.id, clean_crs_code)
+                    crs_obj = (
+                        course_cache.get(course_key) or 
+                        course_cache.get((col_obj.id, clean_crs_code.lstrip('0'))) or 
+                        course_cache.get((col_obj.id, clean_crs_code.zfill(10)))
+                    )
+                    if not crs_obj:
                         crs_obj = Course(
                             college_id=col_obj.id,
-                            course_code=current_course_code,
-                            course_name=current_course_name or "Engineering Course"
+                            course_code=clean_crs_code[:50],
+                            course_name=(current_course_name or "Engineering Course")[:500]
                         )
                         self.db.add(crs_obj)
                         self.db.flush()
                         course_cache[course_key] = crs_obj
+                        course_cache[(col_obj.id, clean_crs_code.lstrip('0'))] = crs_obj
+                        course_cache[(col_obj.id, clean_crs_code.zfill(10))] = crs_obj
                         new_courses_count += 1
-                    crs_obj = course_cache[course_key]
 
                     df = tab.extract()
                     if not df or len(df) < 2:
@@ -635,7 +650,9 @@ class PDFImporter:
 
                             try:
                                 rank = int(rank_str)
-                                perc = float(perc_str) if perc_str else None
+                                if rank < 0 or rank > 2147483647:
+                                    rank = None
+                                perc = round(float(perc_str), 7) if perc_str else None
                                 seat_category = parse_category_meta(cat_clean)
                                 reservation_level = parse_reservation_level(quota_title, cat_clean)
 
@@ -660,48 +677,82 @@ class PDFImporter:
                                 )
                                 new_cutoffs.append(cutoff_entry)
 
-                                # Batch commit in chunks of 2,000 for high performance and low memory
+                                # Batch commit in chunks of 2,000 with safe rollback and fallback
                                 if len(new_cutoffs) >= 2000:
-                                    self.db.bulk_save_objects(new_cutoffs)
-                                    self.db.commit()
-                                    result.records_created += len(new_cutoffs)
-                                    new_cutoffs = []
+                                    try:
+                                        self.db.bulk_save_objects(new_cutoffs)
+                                        self.db.commit()
+                                        result.records_created += len(new_cutoffs)
+                                        new_cutoffs = []
+                                    except Exception as save_err:
+                                        self.db.rollback()
+                                        logger.warning(f"Bulk save batch failed in state parser, attempting individual saves: {save_err}")
+                                        for co in new_cutoffs:
+                                            try:
+                                                self.db.add(co)
+                                                self.db.commit()
+                                                result.records_created += 1
+                                            except Exception as single_err:
+                                                self.db.rollback()
+                                                logger.warning(f"Could not save single cutoff record: {single_err}")
+                                        new_cutoffs = []
 
                             except (ValueError, TypeError):
                                 result.warnings += 1
 
                     prev_table_bottom = tab_bottom
 
-                # Update real-time progress for each page
+                # Update real-time progress periodically (every 5 pages or final page) to prevent excessive DB commits
                 result.pages_processed = page_idx + 1
-                if batch:
+                if batch and ((page_idx + 1) % 5 == 0 or page_idx == num_pages - 1):
                     batch.pages_processed = page_idx + 1
                     batch.records_created = result.records_created + len(new_cutoffs)
-                    self.db.commit()
+                    try:
+                        self.db.commit()
+                    except Exception as commit_err:
+                        self.db.rollback()
+                        logger.warning(f"Could not commit batch progress on page {page_idx + 1}: {commit_err}")
 
             except Exception as page_err:
                 logger.warning(f"Warning processing page {page_idx + 1} of {pdf_path.name}: {page_err}")
+                self.db.rollback()
                 result.warnings += 1
                 result.pages_processed = page_idx + 1
                 if batch:
-                    batch.pages_processed = page_idx + 1
-                    self.db.commit()
+                    try:
+                        batch.pages_processed = page_idx + 1
+                        self.db.commit()
+                    except Exception:
+                        self.db.rollback()
 
-        # Commit remaining records
+        # Commit remaining records with safe rollback and fallback
         if new_cutoffs:
-            self.db.bulk_save_objects(new_cutoffs)
-            self.db.commit()
-            result.records_created += len(new_cutoffs)
+            try:
+                self.db.bulk_save_objects(new_cutoffs)
+                self.db.commit()
+                result.records_created += len(new_cutoffs)
+            except Exception as save_err:
+                self.db.rollback()
+                logger.warning(f"Final bulk save failed in state parser, attempting individual saves: {save_err}")
+                for co in new_cutoffs:
+                    try:
+                        self.db.add(co)
+                        self.db.commit()
+                        result.records_created += 1
+                    except Exception as single_err:
+                        self.db.rollback()
+                        logger.warning(f"Could not save single cutoff record: {single_err}")
 
         doc.close()
 
         result.colleges_found = len(college_cache)
         result.courses_found = len(course_cache)
 
-        # Update CapRound metadata
+        # Update CapRound metadata accurately
         cap_round = self.db.get(CapRound, self.cap_round_id)
         if cap_round:
-            cap_round.total_records = (cap_round.total_records or 0) + result.records_created
+            total_for_round = self.db.query(func.count(Cutoff.id)).filter(Cutoff.cap_round_id == self.cap_round_id).scalar() or 0
+            cap_round.total_records = total_for_round
             cap_round.total_pages = num_pages
             cap_round.processing_status = "COMPLETED"
             self.db.commit()
