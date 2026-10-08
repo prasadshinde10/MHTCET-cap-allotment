@@ -3,6 +3,7 @@ import shutil
 import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import select, desc, func
