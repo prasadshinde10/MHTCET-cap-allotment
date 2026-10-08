@@ -171,56 +171,35 @@ class PDFImporter:
         if not records:
             return
         try:
-            from sqlalchemy import text
-            self.db.execute(text("""
-                CREATE TABLE IF NOT EXISTS all_india_cutoff_records (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    cap_round INTEGER NOT NULL,
-                    academic_year TEXT,
-                    sr_no INTEGER,
-                    merit_rank INTEGER NOT NULL,
-                    merit_percentile REAL NOT NULL,
-                    choice_code TEXT NOT NULL,
-                    college_code TEXT NOT NULL,
-                    college_name TEXT NOT NULL,
-                    course_name TEXT NOT NULL,
-                    merit_exam TEXT,
-                    type TEXT,
-                    seat_type TEXT,
-                    source_pdf TEXT,
-                    page_number INTEGER,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """))
+            from app.models.all_india_cutoff import AllIndiaCutoffRecord
+            AllIndiaCutoffRecord.__table__.create(bind=self.db.bind, checkfirst=True)
+
+            ai_objs = []
             for r in records:
-                self.db.execute(text("""
-                    INSERT INTO all_india_cutoff_records (
-                        cap_round, academic_year, sr_no, merit_rank, merit_percentile,
-                        choice_code, college_code, college_name, course_name,
-                        merit_exam, type, seat_type, source_pdf, page_number
-                    ) VALUES (
-                        :cap_round, :academic_year, :sr_no, :merit_rank, :merit_percentile,
-                        :choice_code, :college_code, :college_name, :course_name,
-                        :merit_exam, :type, :seat_type, :source_pdf, :page_number
-                    )
-                """), {
-                    "cap_round": r["cap_round"],
-                    "academic_year": r["academic_year"],
-                    "sr_no": r["sr_no"],
-                    "merit_rank": r["merit_rank"],
-                    "merit_percentile": r["merit_percentile"],
-                    "choice_code": r["choice_code"],
-                    "college_code": r["institute_code"],
-                    "college_name": r["institute_name"],
-                    "course_name": r["course_name"],
-                    "merit_exam": r.get("merit_exam"),
-                    "type": r.get("type"),
-                    "seat_type": r.get("seat_type"),
-                    "source_pdf": r.get("source_pdf"),
-                    "page_number": r.get("page_number")
-                })
-            self.db.commit()
+                score = r.get("merit_score")
+                if score is None:
+                    score = r.get("merit_percentile")
+                ai_objs.append(AllIndiaCutoffRecord(
+                    cap_round=r["cap_round"],
+                    academic_year=r.get("academic_year"),
+                    sr_no=r.get("sr_no"),
+                    merit_rank=r["merit_rank"],
+                    merit_percentile=float(score or 0.0),
+                    choice_code=r["choice_code"],
+                    college_code=r.get("institute_code", ""),
+                    college_name=r.get("institute_name", ""),
+                    course_name=r.get("course_name", ""),
+                    merit_exam=r.get("merit_exam"),
+                    type=r.get("type"),
+                    seat_type=r.get("seat_type"),
+                    source_pdf=r.get("source_pdf"),
+                    page_number=r.get("page_number")
+                ))
+            if ai_objs:
+                self.db.bulk_save_objects(ai_objs)
+                self.db.commit()
         except Exception as e:
+            self.db.rollback()
             logger.warning(f"Could not sync all_india_cutoff_records table: {e}")
 
     def _process_all_india(
@@ -250,16 +229,21 @@ class PDFImporter:
         acad_year = f"{self.year}-{str(self.year + 1)[-2:]}"
 
         for page_idx in range(num_pages):
-            page = doc[page_idx]
-            words = page.get_text("words")
-            if words:
-                page_recs = parse_page_words(
-                    words=words,
-                    cap_round=self.round_number,
-                    academic_year=acad_year,
-                    source_file=pdf_path.name,
-                    page_number=page_idx + 1
-                )
+            page_recs = []
+            try:
+                page = doc[page_idx]
+                words = page.get_text("words")
+                if words:
+                    page_recs = parse_page_words(
+                        words=words,
+                        cap_round=self.round_number,
+                        academic_year=acad_year,
+                        source_file=pdf_path.name,
+                        page_number=page_idx + 1
+                    )
+            except Exception as page_err:
+                logger.warning(f"Error parsing All India PDF page {page_idx + 1}: {page_err}")
+                page_recs = []
 
             for rec in page_recs:
                 inst_code = str(rec.get("institute_code", "")).strip()
@@ -271,8 +255,14 @@ class PDFImporter:
                     continue
 
                 # 1. Resolve College (enrich from verified INSTITUTES_DATA master dictionary)
-                if inst_code not in college_cache:
-                    inst_meta = INSTITUTES_DATA.get(inst_code.zfill(5))
+                clean_inst_code = inst_code.strip()
+                col_obj = (
+                    college_cache.get(clean_inst_code) or 
+                    college_cache.get(clean_inst_code.lstrip('0')) or 
+                    college_cache.get(clean_inst_code.zfill(5))
+                )
+                if not col_obj:
+                    inst_meta = INSTITUTES_DATA.get(clean_inst_code.zfill(5)) or INSTITUTES_DATA.get(clean_inst_code.lstrip('0'))
                     status_lower = inst_name.lower()
                     if inst_meta:
                         col_district = inst_meta.get("district") or extract_district(inst_name)
@@ -290,7 +280,7 @@ class PDFImporter:
                         col_name = inst_name
 
                     col_obj = College(
-                        college_code=inst_code,
+                        college_code=clean_inst_code.zfill(5),
                         college_name=col_name,
                         city=col_district,
                         district=col_district,
@@ -302,25 +292,34 @@ class PDFImporter:
                     )
                     self.db.add(col_obj)
                     self.db.flush()
-                    college_cache[inst_code] = col_obj
-
-                col_obj = college_cache[inst_code]
+                    college_cache[clean_inst_code] = col_obj
+                    college_cache[clean_inst_code.lstrip('0')] = col_obj
+                    college_cache[clean_inst_code.zfill(5)] = col_obj
 
                 # 2. Resolve Course
-                course_key = (col_obj.id, choice_code)
-                if course_key not in course_cache:
+                clean_choice_code = choice_code.strip()
+                course_key = (col_obj.id, clean_choice_code)
+                crs_obj = (
+                    course_cache.get(course_key) or 
+                    course_cache.get((col_obj.id, clean_choice_code.lstrip('0'))) or
+                    course_cache.get((col_obj.id, clean_choice_code.zfill(10)))
+                )
+                if not crs_obj:
                     crs_obj = Course(
                         college_id=col_obj.id,
-                        course_code=choice_code,
+                        course_code=clean_choice_code,
                         course_name=course_name
                     )
                     self.db.add(crs_obj)
                     self.db.flush()
                     course_cache[course_key] = crs_obj
-
-                crs_obj = course_cache[course_key]
+                    course_cache[(col_obj.id, clean_choice_code.lstrip('0'))] = crs_obj
+                    course_cache[(col_obj.id, clean_choice_code.zfill(10))] = crs_obj
 
                 # 3. Create Cutoff record
+                raw_score = rec.get("merit_score") if rec.get("merit_score") is not None else rec.get("merit_percentile")
+                clean_percentile = round(float(raw_score), 7) if raw_score is not None else None
+
                 cutoff_entry = Cutoff(
                     year=self.year,
                     cap_round_id=self.cap_round_id,
@@ -334,7 +333,7 @@ class PDFImporter:
                     seat_location="All India",
                     stage="AI",
                     merit_number=rec.get("merit_rank"),
-                    percentile=rec.get("merit_percentile"),
+                    percentile=clean_percentile,
                     source_page=rec.get("page_number", page_idx + 1),
                     source_pdf=pdf_path.name
                 )
@@ -417,10 +416,14 @@ class PDFImporter:
         college_cache: Dict[str, College] = {}
         for col in self.db.execute(select(College)).scalars().all():
             college_cache[col.college_code] = col
+            college_cache[col.college_code.lstrip('0')] = col
+            college_cache[col.college_code.zfill(5)] = col
 
         course_cache: Dict[tuple, Course] = {}
         for crs in self.db.execute(select(Course)).scalars().all():
             course_cache[(crs.college_id, crs.course_code)] = crs
+            course_cache[(crs.college_id, crs.course_code.lstrip('0'))] = crs
+            course_cache[(crs.college_id, crs.course_code.zfill(10))] = crs
 
         # Ensure clean idempotent execution: clear any existing cutoffs for this batch or source PDF
         self.db.execute(Cutoff.__table__.delete().where(Cutoff.import_batch_id == self.batch_id))

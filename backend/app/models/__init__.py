@@ -10,9 +10,10 @@ from app.models.import_log import ImportLog
 from app.models.parser_error import ParserError
 from app.models.manual_correction import ManualCorrection
 from app.models.audit_log import AuditLog
+from app.models.all_india_cutoff import AllIndiaCutoffRecord
 
 __all__ = [
     "Base", "AdminUser", "College", "Course", "CapRound", "Cutoff", 
     "StagingCutoff", "ImportBatch", "ImportLog", "ParserError", 
-    "ManualCorrection", "AuditLog"
+    "ManualCorrection", "AuditLog", "AllIndiaCutoffRecord"
 ]

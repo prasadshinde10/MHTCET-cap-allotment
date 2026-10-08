@@ -256,9 +256,16 @@ def process_batch(
             "errors": batch.error_count
         }
     except Exception as e:
-        batch.status = "FAILED"
-        batch.completed_at = datetime.now(timezone.utc)
-        db.commit()
+        logger.exception(f"Batch {batch_id} processing error: {e}")
+        try:
+            db.rollback()
+            failed_batch = db.get(ImportBatch, batch_id)
+            if failed_batch:
+                failed_batch.status = "FAILED"
+                failed_batch.completed_at = datetime.now(timezone.utc)
+                db.commit()
+        except Exception as rollback_err:
+            logger.error(f"Error updating batch status after failure: {rollback_err}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/", response_model=PaginatedResponse[ImportBatchListItem])
