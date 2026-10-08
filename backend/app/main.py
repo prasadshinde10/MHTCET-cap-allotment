@@ -29,19 +29,34 @@ async def lifespan(app: FastAPI):
 
     # Ensure database schema tables exist
     Base.metadata.create_all(bind=engine)
-    with engine.begin() as conn:
-        try:
-            conn.exec_driver_sql("ALTER TABLE import_batches ADD COLUMN total_pages INTEGER DEFAULT 0;")
-        except Exception:
-            pass # Column already exists
-        if engine.dialect.name == "postgresql":
+    # Ensure database schema migrations run safely in isolated transactions
+    if engine.dialect.name == "postgresql":
+        migration_stmts = [
+            "ALTER TABLE import_batches ADD COLUMN IF NOT EXISTS total_pages INTEGER DEFAULT 0;",
+            "ALTER TABLE colleges ALTER COLUMN minority_status TYPE VARCHAR(200);",
+            "ALTER TABLE colleges ALTER COLUMN minority_type TYPE VARCHAR(200);",
+            "ALTER TABLE colleges ALTER COLUMN college_type TYPE VARCHAR(200);",
+            "ALTER TABLE colleges ALTER COLUMN funding_type TYPE VARCHAR(200);",
+            "ALTER TABLE colleges ALTER COLUMN status TYPE VARCHAR(50);",
+            "ALTER TABLE colleges ALTER COLUMN college_name TYPE VARCHAR(500);",
+            "ALTER TABLE colleges ALTER COLUMN home_university TYPE VARCHAR(300);",
+            "ALTER TABLE colleges ALTER COLUMN city TYPE VARCHAR(200);",
+            "ALTER TABLE colleges ALTER COLUMN district TYPE VARCHAR(200);",
+            "ALTER TABLE courses ALTER COLUMN course_name TYPE VARCHAR(500);",
+            "ALTER TABLE courses ALTER COLUMN course_code TYPE VARCHAR(50);"
+        ]
+        for stmt in migration_stmts:
             try:
-                conn.exec_driver_sql("ALTER TABLE colleges ALTER COLUMN minority_status TYPE VARCHAR(200);")
-                conn.exec_driver_sql("ALTER TABLE colleges ALTER COLUMN college_type TYPE VARCHAR(200);")
-                conn.exec_driver_sql("ALTER TABLE colleges ALTER COLUMN funding_type TYPE VARCHAR(200);")
-                conn.exec_driver_sql("ALTER TABLE colleges ALTER COLUMN status TYPE VARCHAR(50);")
+                with engine.begin() as conn:
+                    conn.exec_driver_sql(stmt)
             except Exception as e:
-                logger.warning(f"Could not auto-widen college columns in PostgreSQL: {e}")
+                logger.info(f"Schema migration statement note: {stmt} -> {e}")
+    else:
+        try:
+            with engine.begin() as conn:
+                conn.exec_driver_sql("ALTER TABLE import_batches ADD COLUMN total_pages INTEGER DEFAULT 0;")
+        except Exception:
+            pass
 
     # Seed admin user on startup
     db = SessionLocal()

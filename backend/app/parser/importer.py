@@ -279,8 +279,17 @@ class PDFImporter:
                         col_univ = ""
                         col_name = inst_name
 
-                    col_minority_str = str(col_minority or "Unknown").strip()
-                    col_minority_type = col_minority_str if "minority" in col_minority_str.lower() and col_minority_str.lower() not in ["minority", "non-minority"] else None
+                    col_minority_raw = str(col_minority or "Unknown").strip()
+                    col_lower = col_minority_raw.lower()
+                    if "non-minority" in col_lower:
+                        col_minority_status = "Non-Minority"
+                        col_minority_type = None
+                    elif "minority" in col_lower:
+                        col_minority_status = "Minority"
+                        col_minority_type = col_minority_raw[:200] if col_lower != "minority" else None
+                    else:
+                        col_minority_status = col_minority_raw[:20]
+                        col_minority_type = None
 
                     col_obj = College(
                         college_code=clean_inst_code.zfill(5),
@@ -289,8 +298,8 @@ class PDFImporter:
                         district=(col_district or "")[:200],
                         college_type=(col_type or "Unknown")[:200],
                         funding_type=(col_funding or "Unknown")[:200],
-                        minority_status=col_minority_str[:200],
-                        minority_type=col_minority_type[:200] if col_minority_type else None,
+                        minority_status=col_minority_status,
+                        minority_type=col_minority_type,
                         home_university=(col_univ or "")[:300],
                         status="Active"
                     )
@@ -544,8 +553,17 @@ class PDFImporter:
                             col_univ = ""
                             col_name = current_college_name
 
-                        col_minority_str = str(col_minority or "Unknown").strip()
-                        col_minority_type = col_minority_str if "minority" in col_minority_str.lower() and col_minority_str.lower() not in ["minority", "non-minority"] else None
+                        col_minority_raw = str(col_minority or "Unknown").strip()
+                        col_lower = col_minority_raw.lower()
+                        if "non-minority" in col_lower:
+                            col_minority_status = "Non-Minority"
+                            col_minority_type = None
+                        elif "minority" in col_lower:
+                            col_minority_status = "Minority"
+                            col_minority_type = col_minority_raw[:200] if col_lower != "minority" else None
+                        else:
+                            col_minority_status = col_minority_raw[:20]
+                            col_minority_type = None
 
                         col_obj = College(
                             college_code=current_college_code,
@@ -554,8 +572,8 @@ class PDFImporter:
                             district=(col_district or "")[:200],
                             college_type=(col_type or "Unknown")[:200],
                             funding_type=(col_funding or "Unknown")[:200],
-                            minority_status=col_minority_str[:200],
-                            minority_type=col_minority_type[:200] if col_minority_type else None,
+                            minority_status=col_minority_status,
+                            minority_type=col_minority_type,
                             home_university=(col_univ or "")[:300],
                             status="Active"
                         )

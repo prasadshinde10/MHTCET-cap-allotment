@@ -344,30 +344,47 @@ def _run_scraper_task(db_paths: List[str]):
                 for item in all_inst_data:
                     code = str(item["dte_code"]).zfill(5)
                     col = sqla_db.query(College).filter(College.college_code == code).first()
+                    raw_minority = str(item.get("minority_status") or "Non-Minority").strip()
+                    m_low = raw_minority.lower()
+                    if "non-minority" in m_low:
+                        min_status = "Non-Minority"
+                        min_type = None
+                    elif "minority" in m_low:
+                        min_status = "Minority"
+                        min_type = raw_minority[:200] if m_low != "minority" else None
+                    else:
+                        min_status = raw_minority[:20]
+                        min_type = None
+
                     if not col:
                         new_col = College(
                             college_code=code,
-                            college_name=item["institute_name"],
-                            city=item.get("district") or "Maharashtra",
-                            district=item.get("district") or "Maharashtra",
-                            college_type=item.get("autonomy_status") or "Non-Autonomous",
-                            funding_type=item.get("status") or "Un-Aided",
-                            minority_status=item.get("minority_status") or "Non-Minority",
-                            home_university=item.get("affiliated_university") or "",
+                            college_name=item["institute_name"][:500],
+                            city=(item.get("district") or "Maharashtra")[:200],
+                            district=(item.get("district") or "Maharashtra")[:200],
+                            college_type=(item.get("autonomy_status") or "Non-Autonomous")[:200],
+                            funding_type=(item.get("status") or "Un-Aided")[:200],
+                            minority_status=min_status,
+                            minority_type=min_type,
+                            home_university=(item.get("affiliated_university") or "")[:300],
                             status="Active"
                         )
                         sqla_db.add(new_col)
                     else:
-                        col.college_name = item["institute_name"]
+                        col.college_name = item["institute_name"][:500]
                         if item.get("district"):
-                            col.district = item["district"]
-                            col.city = item["district"]
+                            col.district = item["district"][:200]
+                            col.city = item["district"][:200]
                         if item.get("autonomy_status"):
-                            col.college_type = item["autonomy_status"]
+                            col.college_type = item["autonomy_status"][:200]
                         if item.get("status"):
-                            col.funding_type = item["status"]
+                            col.funding_type = item["status"][:200]
                         if item.get("affiliated_university"):
-                            col.home_university = item["affiliated_university"]
+                            col.home_university = item["affiliated_university"][:300]
+                        if item.get("minority_status"):
+                            col.minority_status = min_status
+                            if min_type:
+                                col.minority_type = min_type
                 sqla_db.commit()
                 logger.info(f"Synced {len(all_inst_data)} institutes to primary SQLAlchemy database.")
             except Exception as sqla_err:
