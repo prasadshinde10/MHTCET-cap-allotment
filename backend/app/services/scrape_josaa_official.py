@@ -18,7 +18,12 @@ import requests
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
+try:
+    import lxml.html
+    HAS_LXML = True
+except ImportError:
+    HAS_LXML = False
 
 CURRENT_URL = "https://josaa.admissions.nic.in/applicant/seatallotmentresult/currentorcr.aspx"
 ARCHIVE_URL = "https://josaa.admissions.nic.in/applicant/seatmatrix/openingclosingrankarchieve.aspx"
@@ -60,12 +65,105 @@ def get_db_path() -> Path:
     return get_josaa_db_path()
 
 
+def get_asp_fields_fast(html_content: str) -> Dict[str, str]:
+    """Ultra-fast ASP.NET viewstate field extraction using regex with lxml fallback."""
+    fields = {}
+    for name in ['__VIEWSTATE', '__VIEWSTATEGENERATOR', '__EVENTVALIDATION']:
+        m = re.search(r'id=[\"\']' + name + r'[\"\']\s+value=[\"\']([^\"\']*)[\"\']', html_content)
+        if not m:
+            m = re.search(r'value=[\"\']([^\"\']*)[\"\']\s+id=[\"\']' + name + r'[\"\']', html_content)
+        if not m:
+            m = re.search(r'name=[\"\']' + name + r'[\"\']\s+value=[\"\']([^\"\']*)[\"\']', html_content)
+        if m:
+            fields[name] = m.group(1)
+
+    if len(fields) < 3 and HAS_LXML:
+        try:
+            tree = lxml.html.fromstring(html_content)
+            for name in ['__VIEWSTATE', '__VIEWSTATEGENERATOR', '__EVENTVALIDATION']:
+                if name not in fields:
+                    el = tree.xpath(f'//input[@id="{name}"]')
+                    if el and el[0].get('value') is not None:
+                        fields[name] = el[0].get('value')
+        except Exception:
+            pass
+    return fields
+
+
 def get_asp_fields(soup: BeautifulSoup) -> Dict[str, str]:
     return {
         name: soup.find('input', {'id': name})['value']
         for name in ['__VIEWSTATE', '__VIEWSTATEGENERATOR', '__EVENTVALIDATION']
         if soup.find('input', {'id': name})
     }
+
+
+def parse_cutoff_table_lxml(html_content: str, year: int, round_no: int) -> List[Dict[str, Any]]:
+    """Fast, memory-efficient cutoff table parsing using lxml with BS4 fallback."""
+    records = []
+    if HAS_LXML:
+        try:
+            tree = lxml.html.fromstring(html_content)
+            tables = tree.xpath('//table')
+            target_table = None
+            for t in tables:
+                rows = t.xpath('.//tr')
+                if len(rows) > 5:
+                    target_table = t
+                    break
+
+            if target_table is not None:
+                rows = target_table.xpath('.//tr')
+                for tr in rows[1:]:
+                    cells = [' '.join(c.text_content().split()) for c in tr.xpath('./td | ./th')]
+                    if len(cells) < 6:
+                        continue
+                    inst_name = cells[0]
+                    prog_name = cells[1]
+                    if not inst_name or not prog_name:
+                        continue
+                    records.append({
+                        'institute': inst_name,
+                        'program': prog_name,
+                        'quota': cells[2] if len(cells) > 2 and cells[2] else 'AI',
+                        'category': cells[3] if len(cells) > 3 and cells[3] else 'OPEN',
+                        'gender': cells[4] if len(cells) > 4 and cells[4] else 'Gender-Neutral',
+                        'opening_rank': cells[5] if len(cells) > 5 else '0',
+                        'closing_rank': cells[6] if len(cells) > 6 else '0',
+                        'round_no': round_no,
+                        'year': year
+                    })
+                if records:
+                    return records
+        except Exception as e:
+            print(f"[!] Warning: lxml table parsing failed, falling back to BeautifulSoup: {e}", flush=True)
+
+    soup = BeautifulSoup(html_content, 'html.parser')
+    table = None
+    for t in soup.find_all('table'):
+        if len(t.find_all('tr')) > 5:
+            table = t
+            break
+    if not table:
+        return []
+
+    rows = table.find_all('tr')
+    for tr in rows[1:]:
+        cells = [' '.join(c.get_text(' ', strip=True).split()) for c in tr.find_all(['td', 'th'])]
+        if len(cells) < 6 or not cells[0] or not cells[1]:
+            continue
+        records.append({
+            'institute': cells[0],
+            'program': cells[1],
+            'quota': cells[2] if len(cells) > 2 and cells[2] else 'AI',
+            'category': cells[3] if len(cells) > 3 and cells[3] else 'OPEN',
+            'gender': cells[4] if len(cells) > 4 and cells[4] else 'Gender-Neutral',
+            'opening_rank': cells[5] if len(cells) > 5 else '0',
+            'closing_rank': cells[6] if len(cells) > 6 else '0',
+            'round_no': round_no,
+            'year': year
+        })
+    return records
 
 
 def parse_degree_type(prog: str) -> str:
@@ -103,46 +201,61 @@ def determine_institute_type(name: str) -> str:
     return "Other-GFTI"
 
 
-def scrape_archive_round(session: requests.Session, year: int = 2025, round_no: int = 1, max_retries: int = 3) -> List[Dict[str, Any]]:
+def scrape_archive_round(
+    session: requests.Session,
+    year: int = 2025,
+    round_no: int = 1,
+    max_retries: int = 3,
+    progress_callback: Optional[Callable[[str, float], None]] = None
+) -> List[Dict[str, Any]]:
     """
     Scrapes an archival year (e.g. 2025, 2024) exclusively from the official NIC portal:
     https://josaa.admissions.nic.in/applicant/seatmatrix/openingclosingrankarchieve.aspx
-    using cascading ASP.NET PostBack simulation with auto-retry and resilient timeouts.
+    using cascading ASP.NET PostBack simulation with auto-retry and fast lxml parsing.
     """
     for attempt in range(1, max_retries + 1):
-        print(f"[*] Connecting to official JoSAA Archive portal for Year {year}, Round {round_no} (attempt {attempt}/{max_retries})...", flush=True)
+        attempt_str = f" (Attempt {attempt}/{max_retries})" if attempt > 1 else ""
+        if progress_callback:
+            progress_callback(f"Connecting to archive portal{attempt_str}...", 0.05)
+        print(f"[*] Connecting to official JoSAA Archive portal for Year {year}, Round {round_no}{attempt_str}...", flush=True)
+
         try:
             s = requests.Session()
             r0 = s.get(ARCHIVE_URL, headers=HEADERS, timeout=45)
             if r0.status_code != 200:
                 print(f"[!] Initial archive GET failed: HTTP {r0.status_code}", flush=True)
                 if attempt < max_retries:
+                    if progress_callback:
+                        progress_callback(f"Archive portal HTTP {r0.status_code}. Retrying in {2 * attempt}s...", 0.05)
                     time.sleep(2 * attempt)
                     continue
                 return []
-            s0 = BeautifulSoup(r0.text, 'html.parser')
 
             # 1. Select Year (PostBack)
-            d1 = dict(get_asp_fields(s0))
+            if progress_callback:
+                progress_callback(f"[Step 1/6]: Selecting Year {year}...", 0.15)
+            d1 = dict(get_asp_fields_fast(r0.text))
             d1['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlYear'
             d1['__EVENTARGUMENT'] = ''
             d1['__LASTFOCUS'] = ''
             d1['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
             r1 = s.post(ARCHIVE_URL, data=d1, headers=HEADERS, timeout=60)
-            s1 = BeautifulSoup(r1.text, 'html.parser')
 
             # 2. Select Round (PostBack)
-            d2 = dict(get_asp_fields(s1))
+            if progress_callback:
+                progress_callback(f"[Step 2/6]: Selecting Round {round_no}...", 0.30)
+            d2 = dict(get_asp_fields_fast(r1.text))
             d2['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlroundno'
             d2['__EVENTARGUMENT'] = ''
             d2['__LASTFOCUS'] = ''
             d2['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
             d2['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
             r2 = s.post(ARCHIVE_URL, data=d2, headers=HEADERS, timeout=60)
-            s2 = BeautifulSoup(r2.text, 'html.parser')
 
             # 3. Select InstType = ALL (PostBack)
-            d3 = dict(get_asp_fields(s2))
+            if progress_callback:
+                progress_callback(f"[Step 3/6]: Selecting All Institute Types...", 0.45)
+            d3 = dict(get_asp_fields_fast(r2.text))
             d3['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstype'
             d3['__EVENTARGUMENT'] = ''
             d3['__LASTFOCUS'] = ''
@@ -150,10 +263,11 @@ def scrape_archive_round(session: requests.Session, year: int = 2025, round_no: 
             d3['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
             d3['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
             r3 = s.post(ARCHIVE_URL, data=d3, headers=HEADERS, timeout=60)
-            s2 = BeautifulSoup(r3.text, 'html.parser')
 
             # 4. Select Institute = ALL (PostBack)
-            d4 = dict(get_asp_fields(s2))
+            if progress_callback:
+                progress_callback(f"[Step 4/6]: Selecting All Institutes...", 0.60)
+            d4 = dict(get_asp_fields_fast(r3.text))
             d4['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstitute'
             d4['__EVENTARGUMENT'] = ''
             d4['__LASTFOCUS'] = ''
@@ -162,10 +276,11 @@ def scrape_archive_round(session: requests.Session, year: int = 2025, round_no: 
             d4['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
             d4['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
             r4 = s.post(ARCHIVE_URL, data=d4, headers=HEADERS, timeout=60)
-            s4 = BeautifulSoup(r4.text, 'html.parser')
 
             # 5. Select Branch = ALL (PostBack)
-            d5 = dict(get_asp_fields(s4))
+            if progress_callback:
+                progress_callback(f"[Step 5/6]: Selecting All Programs / Branches...", 0.72)
+            d5 = dict(get_asp_fields_fast(r4.text))
             d5['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlBranch'
             d5['__EVENTARGUMENT'] = ''
             d5['__LASTFOCUS'] = ''
@@ -175,80 +290,72 @@ def scrape_archive_round(session: requests.Session, year: int = 2025, round_no: 
             d5['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
             d5['ctl00$ContentPlaceHolder1$ddlBranch'] = 'ALL'
             r5 = s.post(ARCHIVE_URL, data=d5, headers=HEADERS, timeout=60)
-            s5 = BeautifulSoup(r5.text, 'html.parser')
 
             # 6. Final Submit with Seat Type = ALL
-            d6 = dict(get_asp_fields(s5))
+            if progress_callback:
+                progress_callback(f"[Step 6/6]: Downloading complete Round {round_no} table from archive portal...", 0.80)
+            d6 = dict(get_asp_fields_fast(r5.text))
             d6['ctl00$ContentPlaceHolder1$ddlYear'] = str(year)
             d6['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
             d6['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
             d6['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
             d6['ctl00$ContentPlaceHolder1$ddlBranch'] = 'ALL'
-            seat_sel = s5.find('select', attrs={'name': lambda n: n and 'SeatType' in n or n and 'Seattype' in n})
-            seat_name = seat_sel.get('name') if seat_sel else 'ctl00$ContentPlaceHolder1$ddlSeatType'
-            d6[seat_name] = 'ALL'
+            d6['ctl00$ContentPlaceHolder1$ddlSeatType'] = 'ALL'
             d6['ctl00$ContentPlaceHolder1$btnSubmit'] = 'Submit'
 
             r6 = s.post(ARCHIVE_URL, data=d6, headers=HEADERS, timeout=180)
-            s6 = BeautifulSoup(r6.text, 'html.parser')
 
-            table = None
-            for t in s6.find_all('table'):
-                if len(t.find_all('tr')) > 5:
-                    table = t
-                    break
+            if progress_callback:
+                progress_callback(f"Fast parsing archive records with lxml...", 0.90)
 
-            if not table:
+            records = parse_cutoff_table_lxml(r6.text, year=year, round_no=round_no)
+
+            if not records:
                 print(f"[!] No cutoff table found for Year {year}, Round {round_no} on attempt {attempt}", flush=True)
                 if attempt < max_retries:
+                    if progress_callback:
+                        progress_callback(f"No records received. Retrying attempt {attempt+1}/{max_retries}...", 0.05)
                     time.sleep(3 * attempt)
                     continue
                 return []
 
-            rows = table.find_all('tr')
-            print(f"[+] Found table with {len(rows)} rows for Year {year}, Round {round_no}", flush=True)
-
-            records = []
-            for tr in rows[1:]:
-                cells = [' '.join(c.get_text(' ', strip=True).split()) for c in tr.find_all(['td', 'th'])]
-                if len(cells) < 6:
-                    continue
-                inst_name = cells[0]
-                prog_name = cells[1]
-                if not inst_name or not prog_name:
-                    continue
-                records.append({
-                    'institute': inst_name,
-                    'program': prog_name,
-                    'quota': cells[2] if len(cells) > 2 and cells[2] else 'AI',
-                    'category': cells[3] if len(cells) > 3 and cells[3] else 'OPEN',
-                    'gender': cells[4] if len(cells) > 4 and cells[4] else 'Gender-Neutral',
-                    'opening_rank': cells[5] if len(cells) > 5 else '0',
-                    'closing_rank': cells[6] if len(cells) > 6 else '0',
-                    'round_no': round_no,
-                    'year': year
-                })
-
             print(f"[+] Successfully extracted {len(records)} records for Year {year}, Round {round_no}.", flush=True)
+            if progress_callback:
+                progress_callback(f"Extracted {len(records):,} records. Saving to database...", 0.96)
             return records
         except Exception as e:
             print(f"[!] Error in archive scrape for Year {year}, Round {round_no} (attempt {attempt}/{max_retries}): {e}", flush=True)
             if attempt < max_retries:
+                if progress_callback:
+                    progress_callback(f"Request failed ({type(e).__name__}). Retrying attempt {attempt+1}/{max_retries}...", 0.05)
                 time.sleep(3 * attempt)
                 continue
             return []
     return []
 
 
-def scrape_2025_round(session: requests.Session, round_no: int = 1) -> List[Dict[str, Any]]:
+def scrape_2025_round(
+    session: requests.Session,
+    round_no: int = 1,
+    progress_callback: Optional[Callable[[str, float], None]] = None
+) -> List[Dict[str, Any]]:
     """Exclusively scrapes Year 2025 cutoffs from official NIC archive portal."""
-    return scrape_archive_round(session, year=2025, round_no=round_no)
+    return scrape_archive_round(session, year=2025, round_no=round_no, progress_callback=progress_callback)
 
 
-def scrape_2026_round(session: requests.Session, round_no: int = 1, max_retries: int = 3) -> List[Dict[str, Any]]:
-    """Scrapes Year 2026 from the live NIC portal (currentorcr.aspx) using cascading ASP.NET PostBack with auto-retry."""
+def scrape_2026_round(
+    session: requests.Session,
+    round_no: int = 1,
+    max_retries: int = 3,
+    progress_callback: Optional[Callable[[str, float], None]] = None
+) -> List[Dict[str, Any]]:
+    """Scrapes Year 2026 from the live NIC portal (currentorcr.aspx) using cascading ASP.NET PostBack with auto-retry and fast lxml parsing."""
     for attempt in range(1, max_retries + 1):
-        print(f"[*] Connecting to JoSAA live portal for Year 2026, Round {round_no} (attempt {attempt}/{max_retries})...", flush=True)
+        attempt_str = f" (Attempt {attempt}/{max_retries})" if attempt > 1 else ""
+        if progress_callback:
+            progress_callback(f"Connecting to live NIC portal{attempt_str}...", 0.05)
+        print(f"[*] Connecting to JoSAA live portal for Year 2026, Round {round_no}{attempt_str}...", flush=True)
+
         try:
             # Use a fresh session per round to guarantee pristine viewstate sequence
             s = requests.Session()
@@ -256,32 +363,37 @@ def scrape_2026_round(session: requests.Session, round_no: int = 1, max_retries:
             if r0.status_code != 200:
                 print(f"[!] Initial live portal GET failed: HTTP {r0.status_code}", flush=True)
                 if attempt < max_retries:
+                    if progress_callback:
+                        progress_callback(f"Portal returned HTTP {r0.status_code}, retrying in {2 * attempt}s...", 0.05)
                     time.sleep(2 * attempt)
                     continue
                 return []
-            s0 = BeautifulSoup(r0.text, 'html.parser')
 
             # 1. Select Round (PostBack)
-            d1 = dict(get_asp_fields(s0))
+            if progress_callback:
+                progress_callback(f"[Step 1/5]: Selecting Round {round_no}...", 0.20)
+            d1 = dict(get_asp_fields_fast(r0.text))
             d1['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlroundno'
             d1['__EVENTARGUMENT'] = ''
             d1['__LASTFOCUS'] = ''
             d1['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
             r1 = s.post(CURRENT_URL, data=d1, headers=HEADERS, timeout=60)
-            s1 = BeautifulSoup(r1.text, 'html.parser')
 
             # 2. Select InstType = ALL (PostBack)
-            d2 = dict(get_asp_fields(s1))
+            if progress_callback:
+                progress_callback(f"[Step 2/5]: Selecting All Institute Types...", 0.35)
+            d2 = dict(get_asp_fields_fast(r1.text))
             d2['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstype'
             d2['__EVENTARGUMENT'] = ''
             d2['__LASTFOCUS'] = ''
             d2['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
             d2['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
             r2 = s.post(CURRENT_URL, data=d2, headers=HEADERS, timeout=60)
-            s2 = BeautifulSoup(r2.text, 'html.parser')
 
             # 3. Select Institute = ALL (PostBack)
-            d3 = dict(get_asp_fields(s2))
+            if progress_callback:
+                progress_callback(f"[Step 3/5]: Selecting All Institutes...", 0.50)
+            d3 = dict(get_asp_fields_fast(r2.text))
             d3['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlInstitute'
             d3['__EVENTARGUMENT'] = ''
             d3['__LASTFOCUS'] = ''
@@ -289,10 +401,11 @@ def scrape_2026_round(session: requests.Session, round_no: int = 1, max_retries:
             d3['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
             d3['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
             r3 = s.post(CURRENT_URL, data=d3, headers=HEADERS, timeout=60)
-            s3 = BeautifulSoup(r3.text, 'html.parser')
 
             # 4. Select Branch = ALL (PostBack)
-            d4 = dict(get_asp_fields(s3))
+            if progress_callback:
+                progress_callback(f"[Step 4/5]: Selecting All Programs / Branches...", 0.65)
+            d4 = dict(get_asp_fields_fast(r3.text))
             d4['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$ddlBranch'
             d4['__EVENTARGUMENT'] = ''
             d4['__LASTFOCUS'] = ''
@@ -301,10 +414,11 @@ def scrape_2026_round(session: requests.Session, round_no: int = 1, max_retries:
             d4['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
             d4['ctl00$ContentPlaceHolder1$ddlBranch'] = 'ALL'
             r4 = s.post(CURRENT_URL, data=d4, headers=HEADERS, timeout=60)
-            s4 = BeautifulSoup(r4.text, 'html.parser')
 
             # 5. Final Submit with Seat Type = ALL (note exact lowercase 't' in ddlSeattype)
-            d5 = dict(get_asp_fields(s4))
+            if progress_callback:
+                progress_callback(f"[Step 5/5]: Downloading complete allotment table (~13,000 live records from NIC, please wait)...", 0.75)
+            d5 = dict(get_asp_fields_fast(r4.text))
             d5['ctl00$ContentPlaceHolder1$ddlroundno'] = str(round_no)
             d5['ctl00$ContentPlaceHolder1$ddlInstype'] = 'ALL'
             d5['ctl00$ContentPlaceHolder1$ddlInstitute'] = 'ALL'
@@ -312,63 +426,48 @@ def scrape_2026_round(session: requests.Session, round_no: int = 1, max_retries:
             d5['ctl00$ContentPlaceHolder1$ddlSeattype'] = 'ALL'
             d5['ctl00$ContentPlaceHolder1$btnSubmit'] = 'Submit'
             r5 = s.post(CURRENT_URL, data=d5, headers=HEADERS, timeout=180)
-            s5 = BeautifulSoup(r5.text, 'html.parser')
 
-            table = None
-            for t in s5.find_all('table'):
-                if len(t.find_all('tr')) > 5:
-                    table = t
-                    break
+            if progress_callback:
+                progress_callback(f"Fast parsing allotment records with lxml...", 0.90)
 
-            if not table:
+            records = parse_cutoff_table_lxml(r5.text, year=2026, round_no=round_no)
+
+            if not records:
                 print(f"[!] No cutoff table found for Year 2026, Round {round_no} on attempt {attempt}", flush=True)
                 if attempt < max_retries:
+                    if progress_callback:
+                        progress_callback(f"No records received from NIC. Retrying in {3 * attempt}s...", 0.05)
                     time.sleep(3 * attempt)
                     continue
                 return []
 
-            rows = table.find_all('tr')
-            print(f"[+] Found table with {len(rows)} rows for Year 2026, Round {round_no}", flush=True)
-
-            records = []
-            for tr in rows[1:]:
-                cells = [' '.join(c.get_text(' ', strip=True).split()) for c in tr.find_all(['td', 'th'])]
-                if len(cells) < 6:
-                    continue
-                inst_name = cells[0]
-                prog_name = cells[1]
-                if not inst_name or not prog_name:
-                    continue
-                records.append({
-                    'institute': inst_name,
-                    'program': prog_name,
-                    'quota': cells[2] if len(cells) > 2 and cells[2] else 'AI',
-                    'category': cells[3] if len(cells) > 3 and cells[3] else 'OPEN',
-                    'gender': cells[4] if len(cells) > 4 and cells[4] else 'Gender-Neutral',
-                    'opening_rank': cells[5] if len(cells) > 5 else '0',
-                    'closing_rank': cells[6] if len(cells) > 6 else '0',
-                    'round_no': round_no,
-                    'year': 2026
-                })
-
             print(f"[+] Successfully extracted {len(records)} records for Year 2026, Round {round_no}.", flush=True)
+            if progress_callback:
+                progress_callback(f"Extracted {len(records):,} records. Saving to database...", 0.96)
             return records
         except Exception as e:
             print(f"[!] Error in live portal scrape for Year 2026, Round {round_no} (attempt {attempt}/{max_retries}): {e}", flush=True)
             if attempt < max_retries:
+                if progress_callback:
+                    progress_callback(f"Portal request failed ({type(e).__name__}). Retrying attempt {attempt+1}/{max_retries}...", 0.05)
                 time.sleep(3 * attempt)
                 continue
             return []
     return []
 
 
-def scrape_round(session: requests.Session, round_no: int = 1, year: int = 2025) -> List[Dict[str, Any]]:
+def scrape_round(
+    session: requests.Session,
+    round_no: int = 1,
+    year: int = 2025,
+    progress_callback: Optional[Callable[[str, float], None]] = None
+) -> List[Dict[str, Any]]:
     """Orchestrates scraping based on whether the requested year is 2025, 2026, or archival."""
     if year == 2026:
-        return scrape_2026_round(session, round_no=round_no)
+        return scrape_2026_round(session, round_no=round_no, progress_callback=progress_callback)
     if year == 2025:
-        return scrape_2025_round(session, round_no=round_no)
-    return scrape_archive_round(session, year=year, round_no=round_no)
+        return scrape_2025_round(session, round_no=round_no, progress_callback=progress_callback)
+    return scrape_archive_round(session, year=year, round_no=round_no, progress_callback=progress_callback)
 
 
 def init_josaa_db_schema(conn: sqlite3.Connection):
@@ -810,16 +909,29 @@ def _run_full_josaa_scrape_task(db_path: Optional[Path] = None):
     total_2025 = 0
     total_2026 = 0
 
+    def make_progress_cb(round_idx: int, year: int, round_no: int):
+        base_pct = int((round_idx / 11) * 85) + 3
+        next_pct = int(((round_idx + 1) / 11) * 85) + 3
+        span = max(1, next_pct - base_pct)
+
+        def cb(step_msg: str, fraction: float):
+            sub_pct = min(next_pct - 1, base_pct + int(fraction * span))
+            with _josaa_lock:
+                josaa_scraper_state["current_year"] = year
+                josaa_scraper_state["current_round"] = round_no
+                josaa_scraper_state["message"] = f"Year {year}, Round {round_no}: {step_msg}"
+                josaa_scraper_state["progress_percent"] = max(josaa_scraper_state["progress_percent"], sub_pct)
+
+        return cb
+
     try:
         # Phase 1: Year 2025 (Rounds 1 to 6)
         for r in range(1, 7):
-            with _josaa_lock:
-                josaa_scraper_state["current_year"] = 2025
-                josaa_scraper_state["current_round"] = r
-                josaa_scraper_state["message"] = f"Ingesting official JoSAA cutoffs: Year 2025, Round {r} of 6..."
-                josaa_scraper_state["progress_percent"] = int((josaa_scraper_state["completed_rounds"] / 11) * 85) + 3
+            round_idx = r - 1
+            cb = make_progress_cb(round_idx=round_idx, year=2025, round_no=r)
+            cb("Connecting to archive portal...", 0.0)
 
-            recs = scrape_round(session, round_no=r, year=2025)
+            recs = scrape_round(session, round_no=r, year=2025, progress_callback=cb)
             if recs:
                 saved = save_records_to_db(recs, db_path=db_path)
                 total_2025 += saved
@@ -829,16 +941,15 @@ def _run_full_josaa_scrape_task(db_path: Optional[Path] = None):
                 josaa_scraper_state["records_2025"] = total_2025
                 josaa_scraper_state["total_records"] = total_2025 + total_2026
                 josaa_scraper_state["progress_percent"] = int((josaa_scraper_state["completed_rounds"] / 11) * 85) + 3
+                josaa_scraper_state["message"] = f"Year 2025, Round {r} complete ({len(recs) if recs else 0:,} records)."
 
-        # Phase 2: Year 2026 (Rounds 1 to 5) from official dataset engine
+        # Phase 2: Year 2026 (Rounds 1 to 5) from official live portal
         for r in range(1, 6):
-            with _josaa_lock:
-                josaa_scraper_state["current_year"] = 2026
-                josaa_scraper_state["current_round"] = r
-                josaa_scraper_state["message"] = f"Scraping JoSAA live portal: Year 2026, Round {r} of 5..."
-                josaa_scraper_state["progress_percent"] = int((josaa_scraper_state["completed_rounds"] / 11) * 85) + 3
+            round_idx = 6 + (r - 1)
+            cb = make_progress_cb(round_idx=round_idx, year=2026, round_no=r)
+            cb("Connecting to live portal...", 0.0)
 
-            recs = scrape_2026_round(session, round_no=r)
+            recs = scrape_2026_round(session, round_no=r, progress_callback=cb)
             if recs:
                 saved = save_records_to_db(recs, db_path=db_path)
                 total_2026 += saved
@@ -848,6 +959,7 @@ def _run_full_josaa_scrape_task(db_path: Optional[Path] = None):
                 josaa_scraper_state["records_2026"] = total_2026
                 josaa_scraper_state["total_records"] = total_2025 + total_2026
                 josaa_scraper_state["progress_percent"] = int((josaa_scraper_state["completed_rounds"] / 11) * 85) + 3
+                josaa_scraper_state["message"] = f"Year 2026, Round {r} complete ({len(recs) if recs else 0:,} records)."
 
         # Phase 3: Home State Seat Matrix Scraper & Normalization
         with _josaa_lock:
