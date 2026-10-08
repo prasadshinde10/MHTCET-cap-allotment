@@ -24,6 +24,8 @@ export interface MedicalFilterOptions {
   college_types: string[];
   categories: string[];
   quotas: string[];
+  states?: string[];
+  cities?: string[];
 }
 
 export interface MedicalCutoffItem {
@@ -60,6 +62,7 @@ export interface MedicalPaginatedResponse {
 }
 
 export interface MedicalCutoffParams {
+  counselling_type?: string;
   academic_year?: string;
   round_name?: string;
   college_id?: number;
@@ -67,8 +70,11 @@ export interface MedicalCutoffParams {
   course_id?: number;
   course_name?: string;
   college_type?: string;
+  state?: string;
+  city?: string;
   category?: string;
   quota?: string;
+  gender?: string;
   student_rank?: number;
   student_score?: number;
   min_rank?: number;
@@ -87,11 +93,17 @@ export interface MedicalDbStats {
   years: string[];
   college_types: Record<string, number>;
   courses_breakdown: Record<string, number>;
+  mcc_cutoff_count?: number;
+  state_cutoff_count?: number;
 }
 
 // Fetch filter options from medical.db
-export const getMedicalFilterOptions = async (): Promise<MedicalFilterOptions> => {
-  const response = await apiClient.get<MedicalFilterOptions>('/medical/filter-options');
+export const getMedicalFilterOptions = async (
+  counsellingType?: string
+): Promise<MedicalFilterOptions> => {
+  const response = await apiClient.get<MedicalFilterOptions>('/medical/filter-options', {
+    params: counsellingType ? { counselling_type: counsellingType } : undefined,
+  });
   return response.data;
 };
 
@@ -114,13 +126,17 @@ export const getMedicalStats = async (): Promise<MedicalDbStats> => {
 // Export CSV URL
 export const getMedicalExportUrl = (params: MedicalCutoffParams): string => {
   const searchParams = new URLSearchParams();
+  if (params.counselling_type) searchParams.set('counselling_type', params.counselling_type);
   if (params.academic_year) searchParams.set('academic_year', params.academic_year);
   if (params.round_name) searchParams.set('round_name', params.round_name);
   if (params.college_name) searchParams.set('college_name', params.college_name);
   if (params.course_name) searchParams.set('course_name', params.course_name);
   if (params.college_type) searchParams.set('college_type', params.college_type);
+  if (params.state) searchParams.set('state', params.state);
+  if (params.city) searchParams.set('city', params.city);
   if (params.category) searchParams.set('category', params.category);
   if (params.quota) searchParams.set('quota', params.quota);
+  if (params.gender) searchParams.set('gender', params.gender);
   if (params.student_rank) searchParams.set('student_rank', params.student_rank.toString());
   if (params.student_score) searchParams.set('student_score', params.student_score.toString());
   if (params.sort_by) searchParams.set('sort_by', params.sort_by);
@@ -130,7 +146,71 @@ export const getMedicalExportUrl = (params: MedicalCutoffParams): string => {
 };
 
 // Wipe medical database
-export const resetMedicalDatabase = async (): Promise<{ success: boolean; message: string }> => {
-  const response = await apiClient.post<{ success: boolean; message: string }>('/medical/wipe');
+export const resetMedicalDatabase = async (counsellingType?: string): Promise<{ success: boolean; message: string }> => {
+  const url = counsellingType ? `/medical/wipe?counselling_type=${counsellingType}` : '/medical/wipe';
+  const response = await apiClient.post<{ success: boolean; message: string }>(url);
+  return response.data;
+};
+
+export interface MedicalDbStatus {
+  cutoff_count: number;
+  college_count: number;
+  course_count: number;
+  years: string[];
+  has_backup: boolean;
+}
+
+export interface MedicalUploadResult {
+  success: boolean;
+  filename: string;
+  stream_type: string;
+  academic_year: string;
+  round_name: string;
+  records_created: number;
+  total_cutoffs: number;
+  total_colleges: number;
+  total_courses: number;
+  duration_seconds: number;
+  message: string;
+}
+
+// Get DB Status
+export const getMedicalDbStatus = async (): Promise<MedicalDbStatus> => {
+  const response = await apiClient.get<MedicalDbStatus>('/medical/db-status');
+  return response.data;
+};
+
+// Restore verified Medical dataset
+export const restoreMedicalDatabase = async (counsellingType?: string): Promise<{
+  success: boolean;
+  message: string;
+  cutoff_count: number;
+  college_count: number;
+  course_count: number;
+}> => {
+  const url = counsellingType ? `/medical/restore?counselling_type=${counsellingType}` : '/medical/restore';
+  const response = await apiClient.post(url);
+  return response.data;
+};
+
+// Upload & Parse Medical PDF
+export const uploadMedicalPdf = async (
+  file: File,
+  academicYear?: string,
+  roundName?: string,
+  streamType?: string
+): Promise<MedicalUploadResult> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (academicYear) formData.append('academic_year', academicYear);
+  if (roundName) formData.append('round_name', roundName);
+  if (streamType) formData.append('stream_type', streamType);
+
+  const response = await apiClient.post<MedicalUploadResult>('/medical/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+    timeout: 300000, // 5 minutes timeout for large PDFs
+  });
   return response.data;
 };

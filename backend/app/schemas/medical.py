@@ -26,6 +26,8 @@ class MedicalFilterOptions(BaseModel):
     college_types: List[str]
     categories: List[str]
     quotas: List[str]
+    states: Optional[List[str]] = []
+    cities: Optional[List[str]] = []
 
 
 class MedicalCutoffItem(BaseModel):
@@ -68,3 +70,5 @@ class MedicalDbStats(BaseModel):
     years: List[str]
     college_types: Dict[str, int]
     courses_breakdown: Dict[str, int]
+    mcc_cutoff_count: Optional[int] = 0
+    state_cutoff_count: Optional[int] = 0

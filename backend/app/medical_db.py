@@ -5,33 +5,34 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 # Path to dedicated medical.db
-def get_medical_db_path() -> Path:
-    app_path = Path(__file__).resolve().parent.parent / "medical.db"
+# Paths to dedicated medical databases (separate for Central MCC and State CET Cell)
+def get_medical_db_path(counselling_type: Optional[str] = None) -> Path:
+    c_low = (counselling_type or "").lower().strip()
+    is_state = c_low in ("state", "maha", "state_cet", "maharashtra")
+    db_filename = "medical_state.db" if is_state else "medical_central.db"
+
+    app_path = Path(__file__).resolve().parent.parent / db_filename
     if app_path.exists():
         return app_path
-    root_path = Path(__file__).resolve().parent.parent.parent / "medical.db"
+    root_path = Path(__file__).resolve().parent.parent.parent / db_filename
     if root_path.exists():
         return root_path
-    cwd_path = Path.cwd() / "medical.db"
+    cwd_path = Path.cwd() / db_filename
     if cwd_path.exists():
         return cwd_path
     return app_path
 
 
-def get_medical_connection() -> sqlite3.Connection:
-    db_path = get_medical_db_path()
+def get_medical_connection(counselling_type: Optional[str] = None) -> sqlite3.Connection:
+    db_path = get_medical_db_path(counselling_type)
     conn = sqlite3.connect(str(db_path), check_same_thread=False, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.execute("PRAGMA journal_mode = WAL;")
     return conn
 
-def init_medical_database():
-    """
-    Initializes dedicated Medical database schema and indexes.
-    Completely isolated from MHT CET, JoSAA, IISER, and BITS.
-    """
-    conn = get_medical_connection()
+
+def _init_single_db(conn: sqlite3.Connection):
     try:
         cur = conn.cursor()
         cur.execute("""
@@ -105,29 +106,51 @@ def init_medical_database():
         conn.close()
 
 
-def fetch_medical_filter_options() -> Dict[str, Any]:
+def init_medical_database(counselling_type: Optional[str] = None):
     """
-    Returns available filter options from dedicated medical.db:
-    academic_years, rounds, colleges, courses, college_types, categories, quotas.
+    Initializes dedicated Medical database schema and indexes for Central and/or State DBs.
+    Completely isolated from MHT CET, JoSAA, IISER, and BITS.
     """
-    init_medical_database()
-    conn = get_medical_connection()
+    if counselling_type:
+        _init_single_db(get_medical_connection(counselling_type))
+    else:
+        _init_single_db(get_medical_connection("central"))
+        _init_single_db(get_medical_connection("state"))
+
+
+def fetch_medical_filter_options(counselling_type: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Returns available filter options from the dedicated Central or State medical database:
+    academic_years, rounds, colleges, courses, college_types, categories, quotas, states, cities.
+    """
+    init_medical_database(counselling_type)
+    conn = get_medical_connection(counselling_type)
     try:
         cur = conn.cursor()
 
+        where_cond = "1=1"
+        if counselling_type:
+            c_low = counselling_type.lower()
+            if c_low in ("central", "mcc", "aiq"):
+                where_cond = "c.exam_name LIKE '%MCC%'"
+            elif c_low in ("state", "maha", "state_cet"):
+                where_cond = "c.exam_name NOT LIKE '%MCC%'"
+
         # Academic Years sorted descending
-        cur.execute("SELECT DISTINCT academic_year FROM medical_cutoffs ORDER BY academic_year DESC")
+        cur.execute(f"SELECT DISTINCT c.academic_year FROM medical_cutoffs c WHERE {where_cond} AND c.academic_year IS NOT NULL ORDER BY c.academic_year DESC")
         academic_years = [r["academic_year"] for r in cur.fetchall() if r["academic_year"]]
 
         # Rounds
-        cur.execute("SELECT DISTINCT round FROM medical_cutoffs ORDER BY round ASC")
+        cur.execute(f"SELECT DISTINCT c.round FROM medical_cutoffs c WHERE {where_cond} AND c.round IS NOT NULL ORDER BY c.round ASC")
         rounds = [r["round"] for r in cur.fetchall() if r["round"]]
 
         # Colleges
-        cur.execute("""
-            SELECT id, college_code, college_name, college_type, city, state 
-            FROM medical_colleges 
-            ORDER BY college_name ASC
+        cur.execute(f"""
+            SELECT DISTINCT col.id, col.college_code, col.college_name, col.college_type, col.city, col.state 
+            FROM medical_colleges col
+            JOIN medical_cutoffs c ON c.college_id = col.id
+            WHERE {where_cond}
+            ORDER BY col.college_name ASC
         """)
         colleges = [
             {
@@ -142,10 +165,12 @@ def fetch_medical_filter_options() -> Dict[str, Any]:
         ]
 
         # Courses
-        cur.execute("""
-            SELECT id, course_code, course_name, degree_type 
-            FROM medical_courses 
-            ORDER BY id ASC
+        cur.execute(f"""
+            SELECT DISTINCT crs.id, crs.course_code, crs.course_name, crs.degree_type 
+            FROM medical_courses crs
+            JOIN medical_cutoffs c ON c.course_id = crs.id
+            WHERE {where_cond}
+            ORDER BY crs.id ASC
         """)
         courses = [
             {
@@ -158,16 +183,42 @@ def fetch_medical_filter_options() -> Dict[str, Any]:
         ]
 
         # College Types
-        cur.execute("SELECT DISTINCT college_type FROM medical_colleges WHERE college_type IS NOT NULL ORDER BY college_type ASC")
+        cur.execute(f"""
+            SELECT DISTINCT col.college_type 
+            FROM medical_colleges col
+            JOIN medical_cutoffs c ON c.college_id = col.id
+            WHERE {where_cond} AND col.college_type IS NOT NULL 
+            ORDER BY col.college_type ASC
+        """)
         college_types = [r["college_type"] for r in cur.fetchall()]
 
         # Base Categories
-        cur.execute("SELECT DISTINCT base_category FROM medical_cutoffs WHERE base_category IS NOT NULL ORDER BY base_category ASC")
+        cur.execute(f"SELECT DISTINCT c.base_category FROM medical_cutoffs c WHERE {where_cond} AND c.base_category IS NOT NULL ORDER BY c.base_category ASC")
         categories = [r["base_category"] for r in cur.fetchall()]
 
         # Quotas
-        cur.execute("SELECT DISTINCT quota_category FROM medical_cutoffs WHERE quota_category IS NOT NULL ORDER BY quota_category ASC")
+        cur.execute(f"SELECT DISTINCT c.quota_category FROM medical_cutoffs c WHERE {where_cond} AND c.quota_category IS NOT NULL ORDER BY c.quota_category ASC")
         quotas = [r["quota_category"] for r in cur.fetchall()]
+
+        # Indian States (especially for MCC Central Counselling)
+        cur.execute(f"""
+            SELECT DISTINCT col.state 
+            FROM medical_colleges col
+            JOIN medical_cutoffs c ON c.college_id = col.id
+            WHERE {where_cond} AND col.state IS NOT NULL AND col.state != ''
+            ORDER BY col.state ASC
+        """)
+        states = [r["state"] for r in cur.fetchall()]
+
+        # Cities (especially for Maharashtra State Medical Counselling)
+        cur.execute(f"""
+            SELECT DISTINCT col.city 
+            FROM medical_colleges col
+            JOIN medical_cutoffs c ON c.college_id = col.id
+            WHERE {where_cond} AND col.city IS NOT NULL AND col.city != ''
+            ORDER BY col.city ASC
+        """)
+        cities = [r["city"] for r in cur.fetchall()]
 
         return {
             "academic_years": academic_years,
@@ -177,12 +228,15 @@ def fetch_medical_filter_options() -> Dict[str, Any]:
             "college_types": college_types,
             "categories": categories,
             "quotas": quotas,
+            "states": states,
+            "cities": cities,
         }
     finally:
         conn.close()
 
 
 def query_medical_cutoffs(
+    counselling_type: Optional[str] = None,
     academic_year: Optional[str] = None,
     round_name: Optional[str] = None,
     college_id: Optional[int] = None,
@@ -190,8 +244,11 @@ def query_medical_cutoffs(
     course_id: Optional[int] = None,
     course_name: Optional[str] = None,
     college_type: Optional[str] = None,
+    state: Optional[str] = None,
+    city: Optional[str] = None,
     category: Optional[str] = None,
     quota: Optional[str] = None,
+    gender: Optional[str] = None,
     student_rank: Optional[int] = None,
     student_score: Optional[int] = None,
     min_rank: Optional[int] = None,
@@ -205,13 +262,43 @@ def query_medical_cutoffs(
     """
     Search and filter cutoffs from dedicated medical.db with pagination and student chance calculation.
     """
-    init_medical_database()
-    conn = get_medical_connection()
+    init_medical_database(counselling_type)
+    conn = get_medical_connection(counselling_type)
     try:
         cur = conn.cursor()
 
         where_clauses = ["1=1"]
         params: List[Any] = []
+
+        # Counselling Type filter: central (MCC) vs state (Maharashtra)
+        if counselling_type:
+            c_low = counselling_type.lower()
+            if c_low in ("central", "mcc", "aiq"):
+                where_clauses.append("c.exam_name LIKE '%MCC%'")
+            elif c_low in ("state", "maha", "state_cet"):
+                where_clauses.append("c.exam_name NOT LIKE '%MCC%'")
+
+        # Indian State filter (e.g. for Central MCC Counselling)
+        if state:
+            if "||" in state or "," in state:
+                st_list = [s.strip() for s in re.split(r"\|\||,", state) if s.strip()]
+                placeholders = ",".join(["?"] * len(st_list))
+                where_clauses.append(f"col.state IN ({placeholders})")
+                params.extend(st_list)
+            else:
+                where_clauses.append("col.state = ?")
+                params.append(state.strip())
+
+        # City filter (e.g. for State Medical Counselling)
+        if city:
+            if "||" in city or "," in city:
+                ct_list = [c.strip() for c in re.split(r"\|\||,", city) if c.strip()]
+                placeholders = ",".join(["?"] * len(ct_list))
+                where_clauses.append(f"col.city IN ({placeholders})")
+                params.extend(ct_list)
+            else:
+                where_clauses.append("col.city = ?")
+                params.append(city.strip())
 
         # Academic Year filter (single or comma-separated)
         if academic_year:
@@ -307,6 +394,24 @@ def query_medical_cutoffs(
             else:
                 where_clauses.append("c.quota_category = ?")
                 params.append(quota.strip())
+
+        # Gender / Seat Quota filter: women (horizontal 30% quota) vs general (open to all)
+        if gender:
+            g_val = gender.strip().lower()
+            if g_val in ("women", "female", "w"):
+                where_clauses.append(
+                    "((c.quota_category LIKE '%(W)%' OR c.quota_category LIKE '% (W)%' "
+                    "OR c.quota_category LIKE '%W' OR c.quota_category = 'W' "
+                    "OR c.quota_category LIKE '%Women%') "
+                    "AND c.quota_category NOT IN ('EWS', 'HEWS', 'PHEWS', 'PWD'))"
+                )
+            elif g_val in ("general", "male", "gen", "open"):
+                where_clauses.append(
+                    "(NOT ((c.quota_category LIKE '%(W)%' OR c.quota_category LIKE '% (W)%' "
+                    "OR c.quota_category LIKE '%W' OR c.quota_category = 'W' "
+                    "OR c.quota_category LIKE '%Women%') "
+                    "AND c.quota_category NOT IN ('EWS', 'HEWS', 'PHEWS', 'PWD')))"
+                )
 
         # Rank ranges
         if min_rank is not None:
@@ -462,63 +567,91 @@ def query_medical_cutoffs(
 
 def get_medical_stats() -> Dict[str, Any]:
     """
-    Returns counts of cutoffs, colleges, courses, available years, and breakdown.
+    Returns counts of cutoffs, colleges, courses, available years from both medical_central.db and medical_state.db.
     """
     init_medical_database()
-    conn = get_medical_connection()
+
+    # 1. Central MCC Database
+    conn_c = get_medical_connection("central")
+    mcc_cutoff_count = 0
+    mcc_college_count = 0
+    c_years = []
     try:
-        cur = conn.cursor()
+        cur_c = conn_c.cursor()
+        cur_c.execute("SELECT COUNT(*) AS total FROM medical_cutoffs")
+        mcc_cutoff_count = cur_c.fetchone()["total"]
+        cur_c.execute("SELECT COUNT(*) AS total FROM medical_colleges")
+        mcc_college_count = cur_c.fetchone()["total"]
+        cur_c.execute("SELECT DISTINCT academic_year FROM medical_cutoffs ORDER BY academic_year DESC")
+        c_years = [r["academic_year"] for r in cur_c.fetchall()]
+    finally:
+        conn_c.close()
 
-        cur.execute("SELECT COUNT(*) AS total FROM medical_cutoffs")
-        cutoff_count = cur.fetchone()["total"]
-
-        cur.execute("SELECT COUNT(*) AS total FROM medical_colleges")
-        college_count = cur.fetchone()["total"]
-
-        cur.execute("SELECT COUNT(*) AS total FROM medical_courses")
-        course_count = cur.fetchone()["total"]
-
-        cur.execute("SELECT DISTINCT academic_year FROM medical_cutoffs ORDER BY academic_year DESC")
-        years = [r["academic_year"] for r in cur.fetchall()]
-
-        cur.execute("""
-            SELECT college_type, COUNT(*) as count 
-            FROM medical_colleges 
-            GROUP BY college_type
-        """)
-        college_types = {r["college_type"]: r["count"] for r in cur.fetchall()}
-
-        cur.execute("""
+    # 2. State CET Cell Database
+    conn_s = get_medical_connection("state")
+    state_cutoff_count = 0
+    state_college_count = 0
+    s_years = []
+    courses_breakdown = {}
+    try:
+        cur_s = conn_s.cursor()
+        cur_s.execute("SELECT COUNT(*) AS total FROM medical_cutoffs")
+        state_cutoff_count = cur_s.fetchone()["total"]
+        cur_s.execute("SELECT COUNT(*) AS total FROM medical_colleges")
+        state_college_count = cur_s.fetchone()["total"]
+        cur_s.execute("SELECT DISTINCT academic_year FROM medical_cutoffs ORDER BY academic_year DESC")
+        s_years = [r["academic_year"] for r in cur_s.fetchall()]
+        cur_s.execute("""
             SELECT crs.course_code, COUNT(c.id) as count 
             FROM medical_courses crs
             LEFT JOIN medical_cutoffs c ON c.course_id = crs.id
             GROUP BY crs.course_code
         """)
-        courses_breakdown = {r["course_code"]: r["count"] for r in cur.fetchall()}
-
-        return {
-            "cutoff_count": cutoff_count,
-            "college_count": college_count,
-            "course_count": course_count,
-            "years": years,
-            "college_types": college_types,
-            "courses_breakdown": courses_breakdown,
-        }
+        courses_breakdown = {r["course_code"]: r["count"] for r in cur_s.fetchall()}
     finally:
-        conn.close()
+        conn_s.close()
+
+    all_years = sorted(list(set(c_years + s_years)), reverse=True)
+    total_cutoffs = mcc_cutoff_count + state_cutoff_count
+    total_colleges = mcc_college_count + state_college_count
+
+    return {
+        "cutoff_count": total_cutoffs,
+        "college_count": total_colleges,
+        "course_count": 8,
+        "years": all_years,
+        "college_types": {
+            "Central / Deemed / AIIMS": mcc_college_count,
+            "Maharashtra State": state_college_count
+        },
+        "courses_breakdown": courses_breakdown,
+        "mcc_cutoff_count": mcc_cutoff_count,
+        "state_cutoff_count": state_cutoff_count,
+    }
 
 
-def wipe_medical_database():
+def wipe_medical_database(counselling_type: Optional[str] = None):
     """
-    Safely resets medical database.
+    Safely resets medical database(s).
     """
-    conn = get_medical_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("DELETE FROM medical_cutoffs;")
-        cur.execute("DELETE FROM medical_colleges;")
-        cur.execute("DELETE FROM medical_courses;")
-        cur.execute("DELETE FROM medical_meta;")
-        conn.commit()
-    finally:
-        conn.close()
+    streams = []
+    if counselling_type:
+        c_low = counselling_type.lower()
+        if c_low in ("state", "maha", "state_cet"):
+            streams = ["state"]
+        else:
+            streams = ["central"]
+    else:
+        streams = ["central", "state"]
+
+    for stream in streams:
+        conn = get_medical_connection(stream)
+        try:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM medical_cutoffs;")
+            cur.execute("DELETE FROM medical_colleges;")
+            cur.execute("DELETE FROM medical_courses;")
+            cur.execute("DELETE FROM medical_meta;")
+            conn.commit()
+        finally:
+            conn.close()

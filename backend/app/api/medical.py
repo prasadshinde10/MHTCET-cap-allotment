@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from typing import Optional, List
 import io
 import csv
+from pathlib import Path
 
 from app.schemas.medical import (
     MedicalFilterOptions,
@@ -15,33 +16,46 @@ from app.medical_db import (
     get_medical_stats,
     wipe_medical_database,
 )
+from app.services.medical_import_service import (
+    wipe_all_medical_data,
+    restore_verified_medical_dataset,
+    ingest_medical_file,
+    UPLOAD_DIR,
+    BACKUP_DIR,
+)
 
 router = APIRouter()
 
 
 @router.get("/filter-options", response_model=MedicalFilterOptions)
-def get_medical_filter_options_endpoint():
+def get_medical_filter_options_endpoint(
+    counselling_type: Optional[str] = Query(None, description="central (MCC) or state (Maharashtra)"),
+):
     """
     Returns available filter options from medical.db:
-    academic_years, rounds, colleges, courses, college_types, categories, quotas.
+    academic_years, rounds, colleges, courses, college_types, categories, quotas, states, cities.
     """
     try:
-        return fetch_medical_filter_options()
+        return fetch_medical_filter_options(counselling_type=counselling_type)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch Medical filter options: {str(e)}")
 
 
 @router.get("/cutoffs", response_model=MedicalPaginatedResponse)
 def get_medical_cutoffs_endpoint(
+    counselling_type: Optional[str] = Query(None, description="central (MCC) or state (Maharashtra)"),
     academic_year: Optional[str] = Query(None, description="Academic year (e.g. 2026-2027, 2025-2026, 2024-2025)"),
     round_name: Optional[str] = Query(None, description="Round (Round 1, Round 2, All)"),
     college_id: Optional[int] = Query(None, description="Specific College ID"),
     college_name: Optional[str] = Query(None, description="College name or code (supports multi-select with ||)"),
     course_id: Optional[int] = Query(None, description="Specific Course ID"),
     course_name: Optional[str] = Query(None, description="Course code or name (MBBS, BDS, BAMS, etc.)"),
-    college_type: Optional[str] = Query(None, description="Government/Aided or Private"),
+    college_type: Optional[str] = Query(None, description="College management or type"),
+    state: Optional[str] = Query(None, description="College State (for Central MCC)"),
+    city: Optional[str] = Query(None, description="College City (for State)"),
     category: Optional[str] = Query(None, description="Base Category (OPEN, OBC, EWS, SC, ST, etc.)"),
     quota: Optional[str] = Query(None, description="Detailed Quota (OPEN, OPEN (W), DEF1, etc.)"),
+    gender: Optional[str] = Query(None, description="Gender / Seat Quota: women (30% quota) or general"),
     student_rank: Optional[int] = Query(None, description="Student NEET AIR (filters reachable colleges and assigns chances)"),
     student_score: Optional[int] = Query(None, description="Student NEET Score / Marks out of 720"),
     min_rank: Optional[int] = Query(None, description="Minimum rank"),
@@ -57,6 +71,7 @@ def get_medical_cutoffs_endpoint(
     """
     try:
         return query_medical_cutoffs(
+            counselling_type=counselling_type,
             academic_year=academic_year,
             round_name=round_name,
             college_id=college_id,
@@ -64,8 +79,11 @@ def get_medical_cutoffs_endpoint(
             course_id=course_id,
             course_name=course_name,
             college_type=college_type,
+            state=state,
+            city=city,
             category=category,
             quota=quota,
+            gender=gender,
             student_rank=student_rank,
             student_score=student_score,
             min_rank=min_rank,
@@ -93,6 +111,7 @@ def get_medical_stats_endpoint():
 
 @router.get("/export")
 def export_medical_cutoffs_csv(
+    counselling_type: Optional[str] = Query(None),
     academic_year: Optional[str] = Query(None),
     round_name: Optional[str] = Query(None),
     college_id: Optional[int] = Query(None),
@@ -100,8 +119,11 @@ def export_medical_cutoffs_csv(
     course_id: Optional[int] = Query(None),
     course_name: Optional[str] = Query(None),
     college_type: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
     quota: Optional[str] = Query(None),
+    gender: Optional[str] = Query(None),
     student_rank: Optional[int] = Query(None),
     student_score: Optional[int] = Query(None),
     sort_by: str = Query("rank_asc"),
@@ -111,6 +133,7 @@ def export_medical_cutoffs_csv(
     """
     try:
         data = query_medical_cutoffs(
+            counselling_type=counselling_type,
             academic_year=academic_year,
             round_name=round_name,
             college_id=college_id,
@@ -118,8 +141,11 @@ def export_medical_cutoffs_csv(
             course_id=course_id,
             course_name=course_name,
             college_type=college_type,
+            state=state,
+            city=city,
             category=category,
             quota=quota,
+            gender=gender,
             student_rank=student_rank,
             student_score=student_score,
             page=1,
@@ -173,12 +199,80 @@ def export_medical_cutoffs_csv(
 
 
 @router.post("/wipe")
-def wipe_medical_endpoint():
+def wipe_medical_endpoint(
+    counselling_type: Optional[str] = Query(None, description="central, state, or leave empty for both"),
+):
     """
-    Clears all Medical data from dedicated medical.db.
+    Clears Medical data from dedicated medical_central.db and/or medical_state.db.
     """
     try:
-        wipe_medical_database()
-        return {"success": True, "message": "Medical database successfully reset"}
+        return wipe_all_medical_data(counselling_type=counselling_type)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to wipe medical database: {str(e)}")
+
+
+@router.post("/restore")
+def restore_medical_endpoint(
+    counselling_type: Optional[str] = Query(None, description="central, state, or leave empty for both"),
+):
+    """
+    Restores verified Medical datasets into medical_central.db and/or medical_state.db from backup.
+    """
+    try:
+        return restore_verified_medical_dataset(counselling_type=counselling_type)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to restore medical database: {str(e)}")
+
+
+@router.get("/db-status")
+def get_medical_db_status_endpoint():
+    """
+    Returns live database status and record counts for medical.db.
+    """
+    try:
+        stats = get_medical_stats()
+        has_backup = (BACKUP_DIR / "medical_backup_full_33613.db").exists()
+        return {
+            "cutoff_count": stats.get("cutoff_count", 0),
+            "college_count": stats.get("college_count", 0),
+            "course_count": stats.get("course_count", 0),
+            "years": stats.get("years", []),
+            "has_backup": has_backup,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch medical DB status: {str(e)}")
+
+
+@router.post("/upload")
+def upload_medical_pdf_endpoint(
+    file: UploadFile = File(...),
+    academic_year: Optional[str] = Form(None),
+    round_name: Optional[str] = Form(None),
+    stream_type: Optional[str] = Form("auto"),
+):
+    """
+    Uploads a Medical Cutoff PDF (MCC AIQ or Maharashtra State Medical),
+    auto-detects/parses it, and ingests cutoffs into medical.db.
+    """
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed for Medical cutoffs.")
+
+    try:
+        # Save file to storage/uploads/medical/
+        safe_filename = f"{int(time.time())}_{file.filename}"
+        target_path = UPLOAD_DIR / safe_filename
+        
+        with open(target_path, "wb") as f:
+            content = file.file.read()
+            f.write(content)
+
+        # Ingest and parse
+        result = ingest_medical_file(
+            file_path=target_path,
+            academic_year=academic_year,
+            round_name=round_name,
+            stream_type=stream_type
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Medical PDF parsing failed: {str(e)}")
