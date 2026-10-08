@@ -279,15 +279,19 @@ class PDFImporter:
                         col_univ = ""
                         col_name = inst_name
 
+                    col_minority_str = str(col_minority or "Unknown").strip()
+                    col_minority_type = col_minority_str if "minority" in col_minority_str.lower() and col_minority_str.lower() not in ["minority", "non-minority"] else None
+
                     col_obj = College(
                         college_code=clean_inst_code.zfill(5),
-                        college_name=col_name,
-                        city=col_district,
-                        district=col_district,
-                        college_type=col_type,
-                        funding_type=col_funding,
-                        minority_status=col_minority,
-                        home_university=col_univ,
+                        college_name=col_name[:500],
+                        city=(col_district or "")[:200],
+                        district=(col_district or "")[:200],
+                        college_type=(col_type or "Unknown")[:200],
+                        funding_type=(col_funding or "Unknown")[:200],
+                        minority_status=col_minority_str[:200],
+                        minority_type=col_minority_type[:200] if col_minority_type else None,
+                        home_university=(col_univ or "")[:300],
                         status="Active"
                     )
                     self.db.add(col_obj)
@@ -540,15 +544,19 @@ class PDFImporter:
                             col_univ = ""
                             col_name = current_college_name
 
+                        col_minority_str = str(col_minority or "Unknown").strip()
+                        col_minority_type = col_minority_str if "minority" in col_minority_str.lower() and col_minority_str.lower() not in ["minority", "non-minority"] else None
+
                         col_obj = College(
                             college_code=current_college_code,
-                            college_name=col_name,
-                            city=col_district,
-                            district=col_district,
-                            college_type=col_type,
-                            funding_type=col_funding,
-                            minority_status=col_minority,
-                            home_university=col_univ,
+                            college_name=col_name[:500],
+                            city=(col_district or "")[:200],
+                            district=(col_district or "")[:200],
+                            college_type=(col_type or "Unknown")[:200],
+                            funding_type=(col_funding or "Unknown")[:200],
+                            minority_status=col_minority_str[:200],
+                            minority_type=col_minority_type[:200] if col_minority_type else None,
+                            home_university=(col_univ or "")[:300],
                             status="Active"
                         )
                         self.db.add(col_obj)

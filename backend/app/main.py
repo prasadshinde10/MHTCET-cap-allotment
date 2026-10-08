@@ -34,6 +34,14 @@ async def lifespan(app: FastAPI):
             conn.exec_driver_sql("ALTER TABLE import_batches ADD COLUMN total_pages INTEGER DEFAULT 0;")
         except Exception:
             pass # Column already exists
+        if engine.dialect.name == "postgresql":
+            try:
+                conn.exec_driver_sql("ALTER TABLE colleges ALTER COLUMN minority_status TYPE VARCHAR(200);")
+                conn.exec_driver_sql("ALTER TABLE colleges ALTER COLUMN college_type TYPE VARCHAR(200);")
+                conn.exec_driver_sql("ALTER TABLE colleges ALTER COLUMN funding_type TYPE VARCHAR(200);")
+                conn.exec_driver_sql("ALTER TABLE colleges ALTER COLUMN status TYPE VARCHAR(50);")
+            except Exception as e:
+                logger.warning(f"Could not auto-widen college columns in PostgreSQL: {e}")
 
     # Seed admin user on startup
     db = SessionLocal()
