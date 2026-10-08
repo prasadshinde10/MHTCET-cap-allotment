@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from typing import Optional, List
 import io
 import csv
+import time
 from pathlib import Path
 
 from app.schemas.medical import (
