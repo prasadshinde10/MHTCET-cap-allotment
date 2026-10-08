@@ -126,15 +126,27 @@ def _init_single_sqlite_db(conn: sqlite3.Connection):
             );
         """)
 
+        # Migration: Ensure counselling_type column exists
+        try:
+            cur.execute("PRAGMA table_info(medical_cutoffs);")
+            mc_cols = [row[1] for row in cur.fetchall()]
+            if "counselling_type" not in mc_cols:
+                cur.execute("ALTER TABLE medical_cutoffs ADD COLUMN counselling_type TEXT DEFAULT 'state';")
+                cur.execute("UPDATE medical_cutoffs SET counselling_type = 'central' WHERE exam_name LIKE '%MCC%';")
+                cur.execute("UPDATE medical_cutoffs SET counselling_type = 'state' WHERE counselling_type IS NULL OR (counselling_type != 'central' AND exam_name NOT LIKE '%MCC%');")
+        except Exception as mig_err:
+            logger.warning(f"Error checking counselling_type column: {mig_err}")
+
         # Indexes
         cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_year ON medical_cutoffs(academic_year);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_round ON medical_cutoffs(round);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_college ON medical_cutoffs(college_id);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_course ON medical_cutoffs(course_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_college ON medical_colleges(id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_course ON medical_courses(id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_category ON medical_cutoffs(base_category);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_quota ON medical_cutoffs(quota_category);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_closing_rank ON medical_cutoffs(closing_rank);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_closing_score ON medical_cutoffs(closing_score);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_counselling_type ON medical_cutoffs(counselling_type);")
 
         conn.commit()
     finally:

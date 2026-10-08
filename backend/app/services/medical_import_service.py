@@ -17,9 +17,13 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 from collections import defaultdict
 
+import threading
 import fitz
 from sqlalchemy import text
 from app.database import engine
+
+# Global PyMuPDF lock to prevent multi-threaded textpage / C-context corruption
+FITZ_LOCK = threading.Lock()
 from app.medical_db import (
     get_medical_connection,
     get_medical_db_path,
@@ -279,11 +283,14 @@ def detect_medical_pdf(pdf_path: Path) -> Dict[str, str]:
     """
     Auto-detects format, stream type, round, and academic year of a medical cutoff PDF.
     """
-    doc = fitz.open(str(pdf_path))
     sample_text = ""
-    for pno in range(min(5, len(doc))):
-        sample_text += " " + doc[pno].get_text()
-    doc.close()
+    with FITZ_LOCK:
+        doc = fitz.open(str(pdf_path))
+        try:
+            for pno in range(min(5, len(doc))):
+                sample_text += " " + doc[pno].get_text()
+        finally:
+            doc.close()
 
     st_upper = sample_text.upper()
 
@@ -362,8 +369,9 @@ def parse_maha_summary_pdf(
     Parses Maharashtra Summary Matrix PDF where each page displays columns SC F, SC L, etc.
     Extracts opening/closing ranks from 'A :' line and marks from 'M :' line.
     """
-    doc = fitz.open(str(pdf_path))
-    total_pages = len(doc)
+    with FITZ_LOCK:
+        doc = fitz.open(str(pdf_path))
+        total_pages = len(doc)
     records = []
 
     cols_info = [
@@ -388,117 +396,120 @@ def parse_maha_summary_pdf(
     current_course = 'MBBS'
     current_college_type = 'Government/Aided'
 
-    for pno in range(total_pages):
-        page = doc[pno]
-        text_content = page.get_text()
-        lines = text_content.split('\n')
+    try:
+        for pno in range(total_pages):
+            with FITZ_LOCK:
+                page = doc[pno]
+                text_content = page.get_text()
+            lines = text_content.split('\n')
 
-        if progress_callback:
-            progress_callback(pno + 1, total_pages, f"Parsing Summary Matrix page {pno + 1} of {total_pages}...", len(records))
+            if progress_callback:
+                progress_callback(pno + 1, total_pages, f"Parsing Summary Matrix page {pno + 1} of {total_pages}...", len(records))
 
-        # Detect Course & Type
-        for l in lines[:6]:
-            if 'Quotawise List' in l or 'quotawise' in l.lower():
-                course_match = re.search(r'In\s+([A-Za-z\.]+)\s+(GOVERNMENT/AIDED|PRIVATE)', l, re.IGNORECASE)
-                if course_match:
-                    raw_c = course_match.group(1).replace('.', '').upper()
-                    current_course = raw_c
-                    raw_t = course_match.group(2).upper()
-                    current_college_type = 'Government/Aided' if 'GOV' in raw_t else 'Private'
-                break
+            # Detect Course & Type
+            for l in lines[:6]:
+                if 'Quotawise List' in l or 'quotawise' in l.lower():
+                    course_match = re.search(r'In\s+([A-Za-z\.]+)\s+(GOVERNMENT/AIDED|PRIVATE)', l, re.IGNORECASE)
+                    if course_match:
+                        raw_c = course_match.group(1).replace('.', '').upper()
+                        current_course = raw_c
+                        raw_t = course_match.group(2).upper()
+                        current_college_type = 'Government/Aided' if 'GOV' in raw_t else 'Private'
+                    break
 
-        # Find F/L line
-        fl_line = None
-        fl_idx = -1
-        for idx, l in enumerate(lines[:10]):
-            if 'F' in l and 'L' in l and len(re.findall(r'[FL]', l)) >= 10:
-                fl_line = l
-                fl_idx = idx
-                break
+            # Find F/L line
+            fl_line = None
+            fl_idx = -1
+            for idx, l in enumerate(lines[:10]):
+                if 'F' in l and 'L' in l and len(re.findall(r'[FL]', l)) >= 10:
+                    fl_line = l
+                    fl_idx = idx
+                    break
 
-        if not fl_line:
-            continue
+            if not fl_line:
+                continue
 
-        fl_matches = list(re.finditer(r'[FL]', fl_line))
-        centers = [m.start() for m in fl_matches]
-        boundaries = [31]
-        for i in range(len(centers) - 1):
-            boundaries.append((centers[i] + centers[i+1]) // 2)
-        boundaries.append(300)
+            fl_matches = list(re.finditer(r'[FL]', fl_line))
+            centers = [m.start() for m in fl_matches]
+            boundaries = [31]
+            for i in range(len(centers) - 1):
+                boundaries.append((centers[i] + centers[i+1]) // 2)
+            boundaries.append(300)
 
-        course_meta = COURSE_MAP.get(current_course, (current_course, current_course, "Medical Sciences (UG)"))
+            course_meta = COURSE_MAP.get(current_course, (current_course, current_course, "Medical Sciences (UG)"))
 
-        i = fl_idx + 1
-        while i < len(lines):
-            line = lines[i]
-            if 'A :' in line:
-                a_line = line
-                m_line = ''
-                if i + 1 < len(lines) and 'M :' in lines[i+1]:
-                    m_line = lines[i+1]
+            i = fl_idx + 1
+            while i < len(lines):
+                line = lines[i]
+                if 'A :' in line:
+                    a_line = line
+                    m_line = ''
+                    if i + 1 < len(lines) and 'M :' in lines[i+1]:
+                        m_line = lines[i+1]
 
-                prefix = a_line[:a_line.find('A :')].strip()
-                m_code = re.search(r'(?:^\d+\s+)?(\d{4,5})\s+(.+)$', prefix)
-                if m_code:
-                    college_code = m_code.group(1).lstrip('0')
-                    college_name = m_code.group(2).strip()
-                else:
-                    college_code = ""
-                    college_name = prefix
+                    prefix = a_line[:a_line.find('A :')].strip()
+                    m_code = re.search(r'(?:^\d+\s+)?(\d{4,5})\s+(.+)$', prefix)
+                    if m_code:
+                        college_code = m_code.group(1).lstrip('0')
+                        college_name = m_code.group(2).strip()
+                    else:
+                        college_code = ""
+                        college_name = prefix
 
-                if college_code:
-                    college_name = re.sub(r'\(.*?\)$', '', college_name).strip()
-                    city = infer_maharashtra_city(college_name)
+                    if college_code:
+                        college_name = re.sub(r'\(.*?\)$', '', college_name).strip()
+                        city = infer_maharashtra_city(college_name)
 
-                    cat_records = {}
-                    for c_idx in range(min(len(cols_info), len(boundaries) - 1)):
-                        cat, fl = cols_info[c_idx]
-                        st = boundaries[c_idx]
-                        en = boundaries[c_idx+1]
-                        a_val = clean_int(a_line[st:en]) if st < len(a_line) else None
-                        m_val = clean_int(m_line[st:en]) if st < len(m_line) else None
+                        cat_records = {}
+                        for c_idx in range(min(len(cols_info), len(boundaries) - 1)):
+                            cat, fl = cols_info[c_idx]
+                            st = boundaries[c_idx]
+                            en = boundaries[c_idx+1]
+                            a_val = clean_int(a_line[st:en]) if st < len(a_line) else None
+                            m_val = clean_int(m_line[st:en]) if st < len(m_line) else None
 
-                        if cat not in cat_records:
-                            cat_records[cat] = {'open_rank': None, 'close_rank': None, 'open_score': None, 'close_score': None}
-                        if fl == 'F':
-                            cat_records[cat]['open_rank'] = a_val
-                            cat_records[cat]['open_score'] = m_val
-                        elif fl == 'L':
-                            cat_records[cat]['close_rank'] = a_val
-                            cat_records[cat]['close_score'] = m_val
+                            if cat not in cat_records:
+                                cat_records[cat] = {'open_rank': None, 'close_rank': None, 'open_score': None, 'close_score': None}
+                            if fl == 'F':
+                                cat_records[cat]['open_rank'] = a_val
+                                cat_records[cat]['open_score'] = m_val
+                            elif fl == 'L':
+                                cat_records[cat]['close_rank'] = a_val
+                                cat_records[cat]['close_score'] = m_val
 
-                    for cat, vals in cat_records.items():
-                        o_rank = vals['open_rank']
-                        c_rank = vals['close_rank']
-                        o_score = vals['open_score']
-                        c_score = vals['close_score']
+                        for cat, vals in cat_records.items():
+                            o_rank = vals['open_rank']
+                            c_rank = vals['close_rank']
+                            o_score = vals['open_score']
+                            c_score = vals['close_score']
 
-                        if o_rank or c_rank or o_score or c_score:
-                            base_cat = BASE_CATEGORY_MAP.get(cat, cat)
-                            records.append({
-                                "college_code": college_code,
-                                "college_name": college_name,
-                                "college_type": current_college_type,
-                                "city": city,
-                                "state": "Maharashtra",
-                                "course_code": course_meta[0],
-                                "course_name": course_meta[1],
-                                "degree_type": course_meta[2],
-                                "academic_year": academic_year,
-                                "round": round_name,
-                                "quota_category": cat,
-                                "base_category": base_cat,
-                                "opening_rank": o_rank or c_rank,
-                                "closing_rank": c_rank or o_rank,
-                                "opening_score": o_score or c_score,
-                                "closing_score": c_score or o_score,
-                                "allotted_seats": 1,
-                                "exam_name": "NEET (UG)",
-                                "counselling_type": "state",
-                            })
-            i += 1
-
-    doc.close()
+                            if o_rank or c_rank or o_score or c_score:
+                                base_cat = BASE_CATEGORY_MAP.get(cat, cat)
+                                records.append({
+                                    "college_code": college_code,
+                                    "college_name": college_name,
+                                    "college_type": current_college_type,
+                                    "city": city,
+                                    "state": "Maharashtra",
+                                    "course_code": course_meta[0],
+                                    "course_name": course_meta[1],
+                                    "degree_type": course_meta[2],
+                                    "academic_year": academic_year,
+                                    "round": round_name,
+                                    "quota_category": cat,
+                                    "base_category": base_cat,
+                                    "opening_rank": o_rank or c_rank,
+                                    "closing_rank": c_rank or o_rank,
+                                    "opening_score": o_score or c_score,
+                                    "closing_score": c_score or o_score,
+                                    "allotted_seats": 1,
+                                    "exam_name": "NEET (UG)",
+                                    "counselling_type": "state",
+                                })
+                i += 1
+    finally:
+        with FITZ_LOCK:
+            doc.close()
     return records
 
 
@@ -514,14 +525,17 @@ def parse_maha_selection_pdf(
     """
     Parses Maharashtra State NEET Selection List PDF into cutoffs grouped by college and quota.
     """
-    doc = fitz.open(str(pdf_path))
-    total_pages = len(doc)
+    with FITZ_LOCK:
+        doc = fitz.open(str(pdf_path))
+        total_pages = len(doc)
     allotments = defaultdict(list)
     college_names = {}
 
-    for pno in range(total_pages):
-        page = doc[pno]
-        page_text = page.get_text()
+    try:
+        for pno in range(total_pages):
+            with FITZ_LOCK:
+                page = doc[pno]
+                page_text = page.get_text()
 
         if progress_callback:
             progress_callback(pno + 1, total_pages, f"Reading candidates on page {pno + 1} of {total_pages}...", len(allotments))
@@ -559,7 +573,9 @@ def parse_maha_selection_pdf(
                     key = (code, course, quota)
                     allotments[key].append(air)
 
-    doc.close()
+    finally:
+        with FITZ_LOCK:
+            doc.close()
 
     records = []
     for (code, course, quota), airs in allotments.items():
@@ -616,70 +632,106 @@ def parse_mcc_pdf(
     """
     Parses MCC AIQ NEET-UG PDFs (Round 1, Round 2, Round 3) into normalized records.
     """
-    doc = fitz.open(str(pdf_path))
-    total_pages = len(doc)
+    with FITZ_LOCK:
+        doc = fitz.open(str(pdf_path))
+        total_pages = len(doc)
     start_p = 1 if (round_name == "Round 3" and "2025" in pdf_path.name) else 2
     allotments = []
 
-    for pno in range(start_p, total_pages):
-        page = doc[pno]
-        if progress_callback:
-            progress_callback(pno + 1, total_pages, f"Extracting MCC tables from page {pno + 1} of {total_pages}...", len(allotments))
+    try:
+        for pno in range(start_p, total_pages):
+            with FITZ_LOCK:
+                page = doc[pno]
+            if progress_callback:
+                progress_callback(pno + 1, total_pages, f"Extracting MCC records from page {pno + 1} of {total_pages}...", len(allotments))
 
-        tabs = list(page.find_tables())
-        if not tabs:
-            continue
+            rows = []
+            try:
+                with FITZ_LOCK:
+                    tabs = list(page.find_tables())
+                    if tabs:
+                        rows = tabs[0].extract()
+            except Exception as table_err:
+                logger.debug(f"find_tables note on page {pno}: {table_err}")
+                rows = []
 
-        rows = tabs[0].extract()
-        for r in rows:
-            vals = [str(x).replace('\n', ' ').strip() if x else '' for x in r]
-            if not vals or not vals[0].isdigit():
-                continue
+            page_allotments = []
+            if rows:
+                for r in rows:
+                    vals = [str(x).replace('\n', ' ').strip() if x else '' for x in r]
+                    if not vals or not vals[0].isdigit():
+                        continue
 
-            if round_name == "Round 1":
-                if len(vals) >= 8 and vals[1].isdigit():
-                    rank = int(vals[1])
-                    quota, inst, course, cat = vals[2], vals[3], vals[4], vals[5]
-                elif len(vals) >= 7:
-                    rank = int(vals[0])
-                    quota, inst, course, cat = vals[1], vals[2], vals[3], vals[4]
-                else:
-                    continue
-                if inst and inst != '-' and course and course != '-':
-                    allotments.append((rank, inst, course, quota, cat))
+                    if round_name == "Round 1":
+                        if len(vals) >= 8 and vals[1].isdigit():
+                            rank = int(vals[1])
+                            quota, inst, course, cat = vals[2], vals[3], vals[4], vals[5]
+                        elif len(vals) >= 7 and vals[0].isdigit():
+                            rank = int(vals[0])
+                            quota, inst, course, cat = vals[1], vals[2], vals[3], vals[4]
+                        else:
+                            continue
+                        if inst and inst != '-' and course and course != '-':
+                            page_allotments.append((rank, inst, course, quota, cat))
 
-            elif round_name == "Round 2":
-                rank = int(vals[1]) if vals[1].isdigit() else int(vals[0])
-                rem_cols = [c for c in (vals[2:] if vals[1].isdigit() else vals[1:]) if c != '']
-                if len(rem_cols) < 11:
-                    continue
-                r1_q, r1_i, r1_c, r1_rem = rem_cols[0], rem_cols[1], rem_cols[2], rem_cols[3]
-                r2_q, r2_i, r2_c, r2_cat, r2_cand_cat, r2_opt, r2_rem = rem_cols[4:11]
+                    elif round_name == "Round 2":
+                        rank = int(vals[1]) if vals[1].isdigit() else int(vals[0])
+                        rem_cols = [c for c in (vals[2:] if vals[1].isdigit() else vals[1:]) if c != '']
+                        if len(rem_cols) >= 11:
+                            r1_q, r1_i, r1_c, r1_rem = rem_cols[0], rem_cols[1], rem_cols[2], rem_cols[3]
+                            r2_q, r2_i, r2_c, r2_cat, r2_cand_cat, r2_opt, r2_rem = rem_cols[4:11]
 
-                if r2_i and r2_i != '-' and ('Fresh' in r2_rem or 'Upgraded' in r2_rem or 'Retained' in r2_rem):
-                    allotments.append((rank, r2_i, r2_c, r2_q, r2_cat))
-                elif ('Did not' in r2_rem or 'No Upgradation' in r2_rem or r2_rem == 'Not Allotted.'):
-                    if r1_rem == 'Reported' and r1_i and r1_i != '-':
-                        allotments.append((rank, r1_i, r1_c, r1_q, 'Open'))
+                            if r2_i and r2_i != '-' and ('Fresh' in r2_rem or 'Upgraded' in r2_rem or 'Retained' in r2_rem):
+                                page_allotments.append((rank, r2_i, r2_c, r2_q, r2_cat))
+                            elif ('Did not' in r2_rem or 'No Upgradation' in r2_rem or r2_rem == 'Not Allotted.'):
+                                if r1_rem == 'Reported' and r1_i and r1_i != '-':
+                                    page_allotments.append((rank, r1_i, r1_c, r1_q, 'Open'))
 
-            elif round_name == "Round 3":
-                rank = int(vals[1]) if vals[1].isdigit() else int(vals[0])
-                rem_cols = [c for c in (vals[2:] if vals[1].isdigit() else vals[1:]) if c != '']
-                if len(rem_cols) < 15:
-                    continue
-                r1_q, r1_i, r1_c, r1_rem = rem_cols[0], rem_cols[1], rem_cols[2], rem_cols[3]
-                r2_q, r2_i, r2_c, r2_rem = rem_cols[4], rem_cols[5], rem_cols[6], rem_cols[7]
-                r3_q, r3_i, r3_c, r3_cat, r3_cand_cat, r3_opt, r3_rem = rem_cols[8:15]
+                    elif round_name == "Round 3":
+                        rank = int(vals[1]) if vals[1].isdigit() else int(vals[0])
+                        rem_cols = [c for c in (vals[2:] if vals[1].isdigit() else vals[1:]) if c != '']
+                        if len(rem_cols) >= 15:
+                            r1_q, r1_i, r1_c, r1_rem = rem_cols[0], rem_cols[1], rem_cols[2], rem_cols[3]
+                            r2_q, r2_i, r2_c, r2_rem = rem_cols[4], rem_cols[5], rem_cols[6], rem_cols[7]
+                            r3_q, r3_i, r3_c, r3_cat, r3_cand_cat, r3_opt, r3_rem = rem_cols[8:15]
 
-                if r3_i and r3_i != '-' and ('Fresh' in r3_rem or 'Upgraded' in r3_rem or 'Retained' in r3_rem):
-                    allotments.append((rank, r3_i, r3_c, r3_q, r3_cat))
-                elif ('Did not' in r3_rem or 'No Upgradation' in r3_rem or r3_rem == 'Not Allotted.'):
-                    if r2_rem in ('Reported', 'Retained') and r2_i and r2_i != '-':
-                        allotments.append((rank, r2_i, r2_c, r2_q, 'Open'))
-                    elif r1_rem == 'Reported' and r1_i and r1_i != '-':
-                        allotments.append((rank, r1_i, r1_c, r1_q, 'Open'))
+                            if r3_i and r3_i != '-' and ('Fresh' in r3_rem or 'Upgraded' in r3_rem or 'Retained' in r3_rem):
+                                page_allotments.append((rank, r3_i, r3_c, r3_q, r3_cat))
+                            elif ('Did not' in r3_rem or 'No Upgradation' in r3_rem or r3_rem == 'Not Allotted.'):
+                                if r2_rem in ('Reported', 'Retained') and r2_i and r2_i != '-':
+                                    page_allotments.append((rank, r2_i, r2_c, r2_q, 'Open'))
+                                elif r1_rem == 'Reported' and r1_i and r1_i != '-':
+                                    page_allotments.append((rank, r1_i, r1_c, r1_q, 'Open'))
 
-    doc.close()
+            # Fallback to text line parser if find_tables produced no allotments
+            if not page_allotments:
+                try:
+                    with FITZ_LOCK:
+                        p_text = page.get_text()
+                    lines = [l.strip() for l in p_text.split('\n') if l.strip()]
+                    i = 0
+                    while i < len(lines):
+                        if lines[i].isdigit() and i + 5 < len(lines) and lines[i+1].isdigit():
+                            rank = int(lines[i+1])
+                            quota = lines[i+2]
+                            inst = lines[i+3]
+                            course = lines[i+4]
+                            cat = lines[i+5]
+                            if inst and inst != '-' and course and course != '-':
+                                page_allotments.append((rank, inst, course, quota, cat))
+                            i += 6
+                            while i < len(lines) and not (lines[i].isdigit() and i + 1 < len(lines) and lines[i+1].isdigit()):
+                                i += 1
+                        else:
+                            i += 1
+                except Exception as text_err:
+                    logger.debug(f"text fallback note on MCC page {pno}: {text_err}")
+
+            allotments.extend(page_allotments)
+
+    finally:
+        with FITZ_LOCK:
+            doc.close()
 
     grouped = defaultdict(list)
     for rank, inst, course, quota, cat in allotments:

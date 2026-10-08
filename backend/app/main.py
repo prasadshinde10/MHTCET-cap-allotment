@@ -51,7 +51,10 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE cutoffs ALTER COLUMN category_code TYPE VARCHAR(100);",
             "ALTER TABLE cutoffs ALTER COLUMN gender TYPE VARCHAR(50);",
             "ALTER TABLE cutoffs ALTER COLUMN seat_category TYPE VARCHAR(100);",
-            "ALTER TABLE cutoffs ALTER COLUMN seat_location TYPE VARCHAR(100);"
+            "ALTER TABLE cutoffs ALTER COLUMN seat_location TYPE VARCHAR(100);",
+            "ALTER TABLE medical_cutoffs ADD COLUMN IF NOT EXISTS counselling_type VARCHAR(20) DEFAULT 'state';",
+            "CREATE INDEX IF NOT EXISTS ix_med_cutoffs_counselling_type ON medical_cutoffs(counselling_type);",
+            "UPDATE medical_cutoffs SET counselling_type = 'central' WHERE exam_name LIKE '%MCC%' AND (counselling_type IS NULL OR counselling_type = 'state');"
         ]
         for stmt in migration_stmts:
             try:
