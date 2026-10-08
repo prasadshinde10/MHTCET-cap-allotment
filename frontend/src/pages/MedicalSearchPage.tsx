@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
@@ -17,8 +17,10 @@ import {
   resetMedicalDatabase,
   restoreMedicalDatabase,
   uploadMedicalPdf,
+  getMedicalUploadProgress,
   MedicalCutoffItem,
   MedicalUploadResult,
+  MedicalTaskProgress,
 } from '../api/medical';
 import SearchableSelect, { SearchableOption } from '../components/ui/SearchableSelect';
 import { FileDropzone } from '../components/ui/FileDropzone';
@@ -45,7 +47,51 @@ export const MedicalSearchPage: React.FC = () => {
   const [uploadRound, setUploadRound] = useState<string>('auto');
   const [uploadStream, setUploadStream] = useState<string>('auto');
   const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [taskProgress, setTaskProgress] = useState<MedicalTaskProgress | null>(null);
   const [uploadResult, setUploadResult] = useState<MedicalUploadResult | null>(null);
+
+  // Poll live progress when an import task is running in the background
+  useEffect(() => {
+    if (!activeTaskId) return;
+
+    let isMounted = true;
+    const interval = setInterval(async () => {
+      try {
+        const progress = await getMedicalUploadProgress(activeTaskId);
+        if (!isMounted) return;
+
+        setTaskProgress(progress);
+
+        if (progress.status === 'COMPLETED') {
+          clearInterval(interval);
+          setIsUploading(false);
+          setActiveTaskId(null);
+          if (progress.result) {
+            setUploadResult(progress.result);
+            toast.success(
+              `PDF parsed successfully! Created ${progress.result.records_created.toLocaleString()} medical cutoffs.`
+            );
+          }
+          queryClient.invalidateQueries({ queryKey: ['medicalCutoffs'] });
+          queryClient.invalidateQueries({ queryKey: ['medicalFilterOptions'] });
+          queryClient.invalidateQueries({ queryKey: ['medicalStats'] });
+        } else if (progress.status === 'FAILED') {
+          clearInterval(interval);
+          setIsUploading(false);
+          setActiveTaskId(null);
+          toast.error(progress.error || 'Medical PDF parsing failed');
+        }
+      } catch (err: any) {
+        console.warn('Progress poll issue (will retry):', err);
+      }
+    }, 750);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [activeTaskId, queryClient]);
 
   // Mutations for isolated medical.db operations
   const resetMutation = useMutation({
@@ -54,6 +100,7 @@ export const MedicalSearchPage: React.FC = () => {
       toast.success(data.message || 'Medical database wiped successfully!');
       setShowResetConfirm(false);
       setUploadResult(null);
+      setTaskProgress(null);
       queryClient.invalidateQueries({ queryKey: ['medicalCutoffs'] });
       queryClient.invalidateQueries({ queryKey: ['medicalFilterOptions'] });
       queryClient.invalidateQueries({ queryKey: ['medicalStats'] });
@@ -69,6 +116,7 @@ export const MedicalSearchPage: React.FC = () => {
       toast.success(data.message || 'Medical dataset restored successfully!');
       setShowRestoreConfirm(false);
       setUploadResult(null);
+      setTaskProgress(null);
       queryClient.invalidateQueries({ queryKey: ['medicalCutoffs'] });
       queryClient.invalidateQueries({ queryKey: ['medicalFilterOptions'] });
       queryClient.invalidateQueries({ queryKey: ['medicalStats'] });
@@ -90,18 +138,28 @@ export const MedicalSearchPage: React.FC = () => {
     },
     onMutate: () => {
       setIsUploading(true);
+      setUploadResult(null);
+      setTaskProgress(null);
     },
     onSuccess: (data) => {
-      toast.success(`PDF parsed successfully! Created ${data.records_created.toLocaleString()} medical cutoffs.`);
-      setIsUploading(false);
-      setUploadResult(data);
-      queryClient.invalidateQueries({ queryKey: ['medicalCutoffs'] });
-      queryClient.invalidateQueries({ queryKey: ['medicalFilterOptions'] });
-      queryClient.invalidateQueries({ queryKey: ['medicalStats'] });
+      if (data.task_id) {
+        setActiveTaskId(data.task_id);
+        setTaskProgress({
+          task_id: data.task_id,
+          filename: data.filename || uploadFile?.name || '',
+          status: 'PROCESSING',
+          progress_percent: data.progress_percent || 5,
+          current_page: 0,
+          total_pages: data.total_pages || 1,
+          records_created: 0,
+          current_action: data.current_action || 'Upload complete. Extracting records...',
+        });
+      }
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.detail || err.message || 'Medical PDF parsing failed');
+      toast.error(err.response?.data?.detail || err.message || 'Medical PDF upload failed');
       setIsUploading(false);
+      setActiveTaskId(null);
     }
   });
 
@@ -657,8 +715,94 @@ export const MedicalSearchPage: React.FC = () => {
             </div>
           )}
 
+          {/* Live Parsing & Ingestion Progress Card */}
+          {isUploading && (
+            <div className="bg-gradient-to-br from-emerald-50 via-teal-50 to-slate-50 border border-emerald-300 rounded-xl p-5 space-y-4 shadow-sm animate-in fade-in duration-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-600"></span>
+                  </span>
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                      Live Ingestion & Parsing Telemetry
+                      <span className="text-[10px] uppercase tracking-wider font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">
+                        Active
+                      </span>
+                    </h4>
+                    <p className="text-xs text-slate-500 font-mono">
+                      {taskProgress?.filename || uploadFile?.name || 'medical_cutoff.pdf'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-500">Progress:</span>
+                  <span className="font-mono font-bold text-sm text-emerald-700 bg-white px-3 py-1 rounded-lg border border-emerald-200 shadow-xs">
+                    {taskProgress?.progress_percent || 5}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Current Action Banner */}
+              <div className="flex items-center gap-2.5 text-xs text-emerald-900 bg-white/80 backdrop-blur-xs p-3 rounded-lg border border-emerald-200 shadow-xs">
+                <RefreshCw className="w-4 h-4 text-emerald-600 animate-spin flex-shrink-0" />
+                <span className="font-medium">
+                  {taskProgress?.current_action || 'Uploading file and analyzing PDF structure...'}
+                </span>
+              </div>
+
+              {/* Animated Progress Bar */}
+              <div className="space-y-1.5">
+                <div className="w-full bg-slate-200/80 h-3.5 rounded-full overflow-hidden p-0.5 shadow-inner">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-500 rounded-full transition-all duration-300 relative overflow-hidden"
+                    style={{
+                      width: `${Math.max(5, Math.min(100, taskProgress?.progress_percent || 5))}%`,
+                    }}
+                  >
+                    <div className="absolute inset-0 bg-white/20 animate-pulse" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Telemetry Metrics Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-1">
+                <div className="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-xs">
+                  <span className="text-slate-400 block text-[10px] font-medium uppercase tracking-wider">Pages Processed</span>
+                  <span className="font-bold text-slate-800 text-sm">
+                    {taskProgress?.current_page || 0} / {taskProgress?.total_pages || '?'}
+                  </span>
+                </div>
+                <div className="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-xs">
+                  <span className="text-slate-400 block text-[10px] font-medium uppercase tracking-wider">Cutoffs Extracted</span>
+                  <span className="font-bold text-emerald-700 text-sm">
+                    {(taskProgress?.records_created || 0).toLocaleString()}
+                  </span>
+                </div>
+                <div className="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-xs">
+                  <span className="text-slate-400 block text-[10px] font-medium uppercase tracking-wider">Target Database</span>
+                  <span className="font-semibold text-slate-800 text-xs">
+                    Supabase PostgreSQL
+                  </span>
+                </div>
+                <div className="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-xs">
+                  <span className="text-slate-400 block text-[10px] font-medium uppercase tracking-wider">Stream Detection</span>
+                  <span className="font-mono text-emerald-800 text-xs">
+                    {uploadStream === 'auto' ? 'Auto-Detecting' : uploadStream}
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-500 italic">
+                * Asynchronous ingestion prevents HTTP 504 timeouts on Render and Cloudflare Pages. Databases (PostgreSQL and SQLite) are safely synchronized.
+              </p>
+            </div>
+          )}
+
           {/* PDF Upload Dropzone & Configuration Form */}
-          {!uploadResult && (
+          {!uploadResult && !isUploading && (
             <div className="space-y-4 pt-1">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
