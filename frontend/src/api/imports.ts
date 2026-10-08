@@ -11,6 +11,8 @@ import {
 
 export interface ProcessBatchResponse {
   status: string;
+  is_running?: boolean;
+  message?: string;
   pages_processed: number;
   records_created: number;
   colleges_found?: number;

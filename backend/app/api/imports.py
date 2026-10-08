@@ -294,7 +294,13 @@ def process_batch(
         )
 
     batch.status = "PROCESSING"
+    batch.pages_processed = 0
+    batch.records_created = 0
+    batch.records_rejected = 0
+    batch.warning_count = 0
+    batch.error_count = 0
     batch.started_at = datetime.now(timezone.utc)
+    batch.completed_at = None
     batch.file_path = str(resolved_path)
     db.commit()
 
@@ -310,12 +316,13 @@ def process_batch(
 
     return {
         "status": "PROCESSING",
-        "pages_processed": batch.pages_processed or 0,
-        "records_created": batch.records_created or 0,
+        "is_running": True,
+        "pages_processed": 0,
+        "records_created": 0,
         "colleges_found": 0,
         "courses_found": 0,
-        "warnings": batch.warning_count or 0,
-        "errors": batch.error_count or 0,
+        "warnings": 0,
+        "errors": 0,
         "message": "Parsing started in background"
     }
 
@@ -592,8 +599,12 @@ def get_batch(
     ).all()
     error_summary = {sev: count for sev, count in errors_count}
 
+    active_thread = _active_import_threads.get(batch_id)
+    is_running = bool((active_thread and active_thread.is_alive()) or batch.status == "PROCESSING")
+
     detail_data = {
         **{c.key: getattr(batch, c.key) for c in ImportBatch.__table__.columns},
+        "is_running": is_running,
         "round_name": cap_round.round_name if cap_round else None,
         "year": cap_round.year if cap_round else None,
         "round_number": cap_round.round_number if cap_round else None,

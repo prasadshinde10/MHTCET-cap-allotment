@@ -58,9 +58,15 @@ export function ImportNewPage() {
   const { data: batchProgress } = useQuery({
     queryKey: ['importProgress', batchId],
     queryFn: () => getImportBatchDetail(batchId!),
-    enabled: !!batchId && isProcessing,
-    refetchInterval: isProcessing ? 800 : false,
+    enabled: !!batchId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      const isRunning = query.state.data?.is_running;
+      return (isProcessing || status === 'PROCESSING' || isRunning) ? 800 : false;
+    },
   });
+
+  const isJobActive = isProcessing || batchProgress?.status === 'PROCESSING' || !!batchProgress?.is_running;
 
   const totalPages = batchProgress?.total_pages || 0;
   const pagesProcessed = batchProgress?.pages_processed || 0;
@@ -68,13 +74,18 @@ export function ImportNewPage() {
 
   const progressPercent = totalPages > 0
     ? Math.min(100, Math.round((pagesProcessed / totalPages) * 100))
-    : (isProcessing ? 4 : 0);
+    : (isJobActive ? 4 : 0);
 
   // Monitor background batch parsing progress to completion
   useEffect(() => {
-    if (!isProcessing || !batchProgress) return;
+    if (!batchProgress) return;
 
-    if (batchProgress.status === 'COMPLETED' || batchProgress.status === 'COMPLETED_WITH_WARNINGS') {
+    if (batchProgress.status === 'PROCESSING' || batchProgress.is_running) {
+      if (!isProcessing) setIsProcessing(true);
+      return;
+    }
+
+    if (isProcessing && (batchProgress.status === 'COMPLETED' || batchProgress.status === 'COMPLETED_WITH_WARNINGS')) {
       setIsProcessing(false);
       setParseResult({
         status: batchProgress.status,
@@ -90,11 +101,11 @@ export function ImportNewPage() {
       queryClient.invalidateQueries({ queryKey: ['cutoffs'] });
       queryClient.invalidateQueries({ queryKey: ['filterOptions'] });
       queryClient.invalidateQueries({ queryKey: ['dbStatus'] });
-    } else if (batchProgress.status === 'FAILED') {
+    } else if (isProcessing && batchProgress.status === 'FAILED') {
       setIsProcessing(false);
       toast.error('Parsing failed. Please check server logs or re-upload the PDF.');
     }
-  }, [batchProgress?.status, batchProgress?.records_created, isProcessing]);
+  }, [batchProgress?.status, batchProgress?.is_running, isProcessing]);
 
   // Fetch live database statistics
   const { data: dbStatus, refetch: refetchDbStatus, isFetching: isFetchingStats } = useQuery({
@@ -255,6 +266,9 @@ export function ImportNewPage() {
     onSuccess: (data) => {
       toast.success('PDF uploaded successfully! Ready to parse.');
       setBatchId(data.import_batch_id);
+      setParseResult(null);
+      setIsProcessing(false);
+      queryClient.removeQueries({ queryKey: ['importProgress'] });
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.detail || error.message || 'Upload failed');
@@ -269,22 +283,15 @@ export function ImportNewPage() {
     },
     onMutate: () => {
       setIsProcessing(true);
+      setParseResult(null);
     },
-    onSuccess: (data) => {
-      if (data.status === 'PROCESSING') {
-        toast.info('PDF extraction started in background. Polling progress...');
-        setIsProcessing(true);
-      } else {
-        toast.success(`Parsing complete! Ingested ${data.records_created.toLocaleString()} cutoff records.`);
-        setIsProcessing(false);
-        setParseResult(data);
-        refetchDbStatus();
-        queryClient.invalidateQueries({ queryKey: ['cutoffs'] });
-        queryClient.invalidateQueries({ queryKey: ['filterOptions'] });
-      }
+    onSuccess: () => {
+      toast.info('PDF extraction initiated! Polling real-time progress...');
+      setIsProcessing(true);
+      queryClient.invalidateQueries({ queryKey: ['importProgress', batchId] });
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.detail || error.message || 'Parsing failed');
+      toast.error(error.response?.data?.detail || error.message || 'Parsing failed to start');
       setIsProcessing(false);
     }
   });
@@ -871,17 +878,17 @@ export function ImportNewPage() {
           </div>
           <div className="space-y-2">
             <h3 className="text-xl font-bold text-gray-900">
-              {isProcessing ? 'Parsing PDF & Ingesting Cutoff Data...' : 'PDF Ready to Parse'}
+              {isJobActive ? 'Parsing PDF & Ingesting Cutoff Data...' : 'PDF Ready to Parse'}
             </h3>
             <p className="text-sm text-gray-500 max-w-md mx-auto">
-              {isProcessing
+              {isJobActive
                 ? 'Extracting table matrices, college metadata, categories, ranks, and percentiles using PyMuPDF.'
                 : `Uploaded for Admission Year ${year}, CAP Round ${round}. Click below to execute extraction.`}
             </p>
           </div>
 
           {/* Real-time Progress Bar & Statistics */}
-          {isProcessing && (
+          {isJobActive && (
             <div className="bg-slate-900 text-white rounded-xl p-6 border border-slate-800 space-y-4 text-left max-w-2xl mx-auto shadow-lg">
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2 font-medium text-emerald-400">
@@ -948,21 +955,26 @@ export function ImportNewPage() {
           )}
 
           <div className="flex justify-center gap-3 pt-2">
-            {!isProcessing && (
+            {!isJobActive && (
               <Button
                 variant="outline"
-                onClick={() => setBatchId(null)}
+                onClick={() => {
+                  setBatchId(null);
+                  setParseResult(null);
+                  setIsProcessing(false);
+                }}
               >
                 Cancel / Choose Another File
               </Button>
             )}
             <Button
               onClick={() => processMutation.mutate()}
-              isLoading={isProcessing}
+              isLoading={isJobActive}
+              disabled={isJobActive}
               size="lg"
               className="bg-primary-600 hover:bg-primary-700 text-white font-semibold px-8"
             >
-              {isProcessing ? 'Parsing In Progress...' : 'Start Real-Time Parsing'}
+              {isJobActive ? 'Parsing In Progress...' : 'Start Real-Time Parsing'}
             </Button>
           </div>
         </div>
