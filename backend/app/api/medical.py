@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Query, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Query, HTTPException, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from typing import Optional, List
 import io
 import csv
 import time
+import uuid
 from pathlib import Path
+import fitz
 
 from app.schemas.medical import (
     MedicalFilterOptions,
@@ -21,6 +23,9 @@ from app.services.medical_import_service import (
     wipe_all_medical_data,
     restore_verified_medical_dataset,
     ingest_medical_file,
+    run_medical_import_task,
+    get_medical_task_status,
+    ACTIVE_MEDICAL_IMPORT_TASKS,
     UPLOAD_DIR,
     BACKUP_DIR,
 )
@@ -246,6 +251,7 @@ def get_medical_db_status_endpoint():
 
 @router.post("/upload")
 def upload_medical_pdf_endpoint(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     academic_year: Optional[str] = Form(None),
     round_name: Optional[str] = Form(None),
@@ -253,7 +259,8 @@ def upload_medical_pdf_endpoint(
 ):
     """
     Uploads a Medical Cutoff PDF (MCC AIQ or Maharashtra State Medical),
-    auto-detects/parses it, and ingests cutoffs into medical.db.
+    starts background asynchronous parsing with live progress telemetry,
+    and returns a task_id immediately.
     """
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed for Medical cutoffs.")
@@ -263,17 +270,64 @@ def upload_medical_pdf_endpoint(
         safe_filename = f"{int(time.time())}_{file.filename}"
         target_path = UPLOAD_DIR / safe_filename
         
+        content = file.file.read()
         with open(target_path, "wb") as f:
-            content = file.file.read()
             f.write(content)
 
-        # Ingest and parse
-        result = ingest_medical_file(
-            file_path=target_path,
-            academic_year=academic_year,
-            round_name=round_name,
-            stream_type=stream_type
+        # Inspect total pages for accurate immediate progress setup
+        total_pages = 1
+        try:
+            doc = fitz.open(str(target_path))
+            total_pages = len(doc)
+            doc.close()
+        except Exception:
+            pass
+
+        task_id = f"med_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+        ACTIVE_MEDICAL_IMPORT_TASKS[task_id] = {
+            "task_id": task_id,
+            "filename": file.filename,
+            "status": "PROCESSING",
+            "progress_percent": 5,
+            "current_page": 0,
+            "total_pages": total_pages,
+            "records_created": 0,
+            "current_action": f"PDF uploaded successfully ({total_pages} pages). Starting extraction...",
+            "started_at": time.time(),
+            "finished_at": None,
+            "error": None,
+            "result": None,
+        }
+
+        # Launch background task
+        background_tasks.add_task(
+            run_medical_import_task,
+            task_id,
+            target_path,
+            academic_year,
+            round_name,
+            stream_type
         )
-        return result
+
+        return {
+            "task_id": task_id,
+            "status": "PROCESSING",
+            "filename": file.filename,
+            "total_pages": total_pages,
+            "progress_percent": 5,
+            "current_action": f"PDF uploaded successfully ({total_pages} pages). Starting extraction...",
+            "message": f"Medical PDF uploaded ({total_pages} pages). Background parsing started."
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Medical PDF parsing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Medical PDF upload failed: {str(e)}")
+
+
+@router.get("/upload/progress/{task_id}")
+def get_medical_upload_progress_endpoint(task_id: str):
+    """
+    Returns real-time progress and telemetry for a medical PDF ingestion background task.
+    """
+    task = get_medical_task_status(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Upload task not found or expired.")
+    return task

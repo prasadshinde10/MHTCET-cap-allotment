@@ -16,6 +16,7 @@ from app.models.base import Base
 from app.auth.seed import seed_admin_user
 from app.auth.middleware import limiter
 from app.middleware.security_headers import SecurityHeadersMiddleware
+from app.medical_db import auto_seed_medical_database_if_empty
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -69,6 +70,7 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         seed_admin_user(db)
+        auto_seed_medical_database_if_empty()
         logger.info("Application startup complete")
     except Exception as e:
         logger.error(f"Error during startup: {e}")

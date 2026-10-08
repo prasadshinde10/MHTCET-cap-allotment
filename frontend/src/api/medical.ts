@@ -174,6 +174,29 @@ export interface MedicalUploadResult {
   message: string;
 }
 
+export interface MedicalUploadStartResponse {
+  task_id: string;
+  status: string;
+  filename: string;
+  total_pages: number;
+  progress_percent: number;
+  current_action: string;
+  message: string;
+}
+
+export interface MedicalTaskProgress {
+  task_id: string;
+  filename: string;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  progress_percent: number;
+  current_page: number;
+  total_pages: number;
+  records_created: number;
+  current_action: string;
+  error?: string | null;
+  result?: MedicalUploadResult | null;
+}
+
 // Get DB Status
 export const getMedicalDbStatus = async (): Promise<MedicalDbStatus> => {
   const response = await apiClient.get<MedicalDbStatus>('/medical/db-status');
@@ -193,24 +216,32 @@ export const restoreMedicalDatabase = async (counsellingType?: string): Promise<
   return response.data;
 };
 
-// Upload & Parse Medical PDF
+// Upload Medical PDF and start background ingestion
 export const uploadMedicalPdf = async (
   file: File,
   academicYear?: string,
   roundName?: string,
   streamType?: string
-): Promise<MedicalUploadResult> => {
+): Promise<MedicalUploadStartResponse> => {
   const formData = new FormData();
   formData.append('file', file);
   if (academicYear) formData.append('academic_year', academicYear);
   if (roundName) formData.append('round_name', roundName);
   if (streamType) formData.append('stream_type', streamType);
 
-  const response = await apiClient.post<MedicalUploadResult>('/medical/upload', formData, {
+  const response = await apiClient.post<MedicalUploadStartResponse>('/medical/upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
-    timeout: 300000, // 5 minutes timeout for large PDFs
   });
   return response.data;
 };
+
+// Poll live progress for background ingestion task
+export const getMedicalUploadProgress = async (
+  taskId: string
+): Promise<MedicalTaskProgress> => {
+  const response = await apiClient.get<MedicalTaskProgress>(`/medical/upload/progress/${taskId}`);
+  return response.data;
+};
+

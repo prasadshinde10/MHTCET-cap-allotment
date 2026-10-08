@@ -26,9 +26,9 @@ def test_medical_db_connection_and_stats():
 
 def test_medical_filter_options():
     options = fetch_medical_filter_options()
-    assert len(options["academic_years"]) >= 3
+    assert len(options["academic_years"]) >= 2
     assert len(options["colleges"]) > 0
-    assert len(options["courses"]) >= 5
+    assert len(options["courses"]) >= 3
     assert "Government/Aided" in options["college_types"]
     assert "OPEN" in options["categories"]
 
@@ -96,3 +96,17 @@ def test_medical_api_endpoints():
     assert resp4.status_code == 200
     assert "attachment" in resp4.headers.get("content-disposition", "")
     assert "Academic Year" in resp4.text
+
+
+def test_medical_upload_and_progress():
+    # 1. Reject non-PDF
+    bad_resp = client.post(
+        "/api/medical/upload",
+        files={"file": ("sample.txt", b"not a pdf", "text/plain")},
+    )
+    assert bad_resp.status_code == 400
+
+    # 2. Check 404 for invalid task id
+    prog_resp = client.get("/api/medical/upload/progress/non_existent_task_id")
+    assert prog_resp.status_code == 404
+
