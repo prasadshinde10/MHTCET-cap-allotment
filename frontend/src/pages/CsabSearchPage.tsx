@@ -351,78 +351,25 @@ export const CsabSearchPage: React.FC = () => {
   // Active filter chips
   const activeFilters: ActiveFilter[] = useMemo(() => {
     const list: ActiveFilter[] = [];
-    if (selectedRounds.length > 0) {
-      list.push({
-        id: 'round',
-        label: 'Round',
-        value: selectedRounds.map((r) => `Special Round ${r}`).join(', '),
-        onRemove: () => setSelectedRounds([]),
-      });
-    }
+    selectedRounds.forEach((r) => {
+      list.push({ id: `round:${r}`, label: 'Round', value: `Special Round ${r}` });
+    });
     if (instituteType) {
-      list.push({
-        id: 'type',
-        label: 'Type',
-        value: instituteType,
-        onRemove: () => setInstituteType(''),
-      });
+      list.push({ id: 'type', label: 'Type', value: instituteType });
     }
-    if (selectedInstitutes.length > 0) {
-      list.push({
-        id: 'institute',
-        label: 'Institute',
-        value: selectedInstitutes.length === 1 ? selectedInstitutes[0] : `${selectedInstitutes.length} Institutes`,
-        onRemove: () => setSelectedInstitutes([]),
-      });
-    }
-    if (selectedStates.length > 0) {
-      list.push({
-        id: 'candidate_state',
-        label: 'Home State',
-        value: selectedStates.join(', '),
-        onRemove: () => setSelectedStates([]),
-      });
-    }
-    if (selectedPrograms.length > 0) {
-      list.push({
-        id: 'program',
-        label: 'Program',
-        value: selectedPrograms.length === 1 ? selectedPrograms[0] : `${selectedPrograms.length} Programs`,
-        onRemove: () => setSelectedPrograms([]),
-      });
-    }
-    if (category) {
-      list.push({
-        id: 'category',
-        label: 'Category',
-        value: category,
-        onRemove: () => setCategory(''),
-      });
-    }
-    if (quota) {
-      list.push({
-        id: 'quota',
-        label: 'Quota',
-        value: quota,
-        onRemove: () => setQuota(''),
-      });
-    }
-    if (gender) {
-      list.push({
-        id: 'gender',
-        label: 'Seat Pool',
-        value: gender,
-        onRemove: () => setGender(''),
-      });
-    }
-    if (maxRank) {
-      list.push({
-        id: 'max_rank',
-        label: 'CRL Rank <=',
-        value: Number(maxRank).toLocaleString(),
-        onRemove: () => setMaxRank(''),
-      });
-    }
+    selectedInstitutes.forEach((inst) => {
+      list.push({ id: `institute:${inst}`, label: 'Institute', value: inst });
+    });
+    selectedStates.forEach((st) => {
+      list.push({ id: `state:${st}`, label: 'Home State', value: st });
+    });
+    selectedPrograms.forEach((prog) => {
+      list.push({ id: `program:${prog}`, label: 'Program', value: prog });
+    });
+    if (category) list.push({ id: 'category', label: 'Category', value: category });
+    if (quota) list.push({ id: 'quota', label: 'Quota', value: quota });
+    if (gender) list.push({ id: 'gender', label: 'Seat Pool', value: gender });
+    if (maxRank) list.push({ id: 'rank', label: 'CRL Rank ≤', value: `#${Number(maxRank).toLocaleString()}` });
     return list;
   }, [
     selectedRounds,
@@ -435,6 +382,34 @@ export const CsabSearchPage: React.FC = () => {
     gender,
     maxRank,
   ]);
+
+  const removeFilterChip = (id: string) => {
+    if (id.startsWith('round:')) {
+      const val = id.substring('round:'.length);
+      setSelectedRounds((prev) => prev.filter((item) => item !== val));
+      return;
+    }
+    if (id === 'type') setInstituteType('');
+    if (id.startsWith('institute:')) {
+      const val = id.substring('institute:'.length);
+      setSelectedInstitutes((prev) => prev.filter((item) => item !== val));
+      return;
+    }
+    if (id.startsWith('state:')) {
+      const val = id.substring('state:'.length);
+      setSelectedStates((prev) => prev.filter((item) => item !== val));
+      return;
+    }
+    if (id.startsWith('program:')) {
+      const val = id.substring('program:'.length);
+      setSelectedPrograms((prev) => prev.filter((item) => item !== val));
+      return;
+    }
+    if (id === 'category') setCategory('');
+    if (id === 'quota') setQuota('');
+    if (id === 'gender') setGender('');
+    if (id === 'rank') setMaxRank('');
+  };
 
   const candidateRankNum = maxRank ? parseInt(maxRank, 10) : null;
 
@@ -472,7 +447,7 @@ export const CsabSearchPage: React.FC = () => {
                 onClick={() => setShowScraperModal(true)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200 animate-pulse hover:bg-teal-100"
               >
-                <Spinner size="sm" className="text-teal-600" />
+                <Spinner className="w-4 h-4 text-teal-600" />
                 <span>
                   Scraping Round {scraperStatus.current_round || 1} ({scraperStatus.progress_percent}%)
                 </span>
@@ -758,6 +733,7 @@ export const CsabSearchPage: React.FC = () => {
           <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <FilterChips
               filters={activeFilters}
+              onRemove={removeFilterChip}
               onClearAll={handleResetFilters}
             />
 
@@ -782,7 +758,7 @@ export const CsabSearchPage: React.FC = () => {
           <div className="text-sm font-bold text-slate-800">
             {isCutoffsLoading ? (
               <span className="flex items-center gap-2 text-slate-500">
-                <Spinner size="sm" />
+                <Spinner className="w-4 h-4 text-slate-500" />
                 Searching CSAB cutoffs...
               </span>
             ) : (
@@ -792,7 +768,7 @@ export const CsabSearchPage: React.FC = () => {
             )}
           </div>
           {isCutoffsFetching && !isCutoffsLoading && (
-            <Spinner size="sm" className="text-teal-600" />
+            <Spinner className="w-4 h-4 text-teal-600" />
           )}
         </div>
 
@@ -845,7 +821,7 @@ export const CsabSearchPage: React.FC = () => {
       {/* Results Content */}
       {isCutoffsLoading ? (
         <div className="bg-white rounded-xl border border-slate-200 p-16 flex flex-col items-center justify-center text-center">
-          <Spinner size="lg" className="text-teal-600 mb-3" />
+          <Spinner className="w-8 h-8 text-teal-600 mb-3" />
           <h3 className="text-sm font-bold text-slate-800">Loading CSAB Special Round Cutoffs...</h3>
           <p className="text-xs text-slate-500 mt-1">Querying opening and closing CRL ranks</p>
         </div>
