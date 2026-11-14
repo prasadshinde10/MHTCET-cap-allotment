@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Search, History, LogOut, GraduationCap, ShieldCheck, UploadCloud, Award, School, Landmark, Stethoscope } from 'lucide-react';
+import { Search, History, LogOut, GraduationCap, ShieldCheck, UploadCloud, Award, School, Landmark, Stethoscope, Building } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../utils/utils';
 
@@ -25,6 +25,12 @@ export const Sidebar: React.FC = () => {
       to: '/josaa',
       icon: Award,
       badge: 'JoSAA',
+    },
+    {
+      name: 'CSAB Special (NIT / IIIT)',
+      to: '/csab',
+      icon: Building,
+      badge: 'CSAB',
     },
     {
       name: 'IISER Cutoffs',

@@ -5,6 +5,7 @@ import { AdminLayout } from './layouts/AdminLayout';
 import { LoginPage } from './pages/LoginPage';
 import { CutoffSearchPage } from './pages/CutoffSearchPage';
 import { JosaaSearchPage } from './pages/JosaaSearchPage';
+import { CsabSearchPage } from './pages/CsabSearchPage';
 import { IiserSearchPage } from './pages/IiserSearchPage';
 import { BitsSearchPage } from './pages/BitsSearchPage';
 import { MedicalSearchPage } from './pages/MedicalSearchPage';
@@ -26,6 +27,7 @@ const App: React.FC = () => {
       <Route element={<AdminLayout />}>
         <Route path="/search" element={<CutoffSearchPage />} />
         <Route path="/josaa" element={<JosaaSearchPage />} />
+        <Route path="/csab" element={<CsabSearchPage />} />
         <Route path="/iiser" element={<IiserSearchPage />} />
         <Route path="/bits" element={<BitsSearchPage />} />
         <Route path="/medical" element={<MedicalSearchPage />} />

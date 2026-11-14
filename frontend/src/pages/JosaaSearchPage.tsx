@@ -12,7 +12,7 @@ import {
   Download, LayoutGrid, Table as TableIcon,
   Award, CheckCircle2, ChevronRight, SlidersHorizontal,
   ExternalLink, ArrowUpDown, Filter, Sparkles,
-  Trash2, RefreshCw, AlertTriangle, Globe
+  Trash2, RefreshCw, AlertTriangle, Globe, Building
 } from 'lucide-react';
 import SearchableSelect, { SearchableOption } from '../components/ui/SearchableSelect';
 import Select from '../components/ui/Select';
@@ -885,6 +885,14 @@ export const JosaaSearchPage: React.FC = () => {
                 Active Panel
               </span>
             </div>
+
+            <Link
+              to="/csab"
+              className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-md text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all"
+            >
+              <Building className="w-4 h-4 text-teal-400" />
+              <span>CSAB Special (NIT / IIIT)</span>
+            </Link>
           </div>
 
           <div className="text-right px-2 hidden lg:block">
