@@ -184,6 +184,23 @@ export const MedicalSearchPage: React.FC = () => {
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
   const pageSizeParam = parseInt(searchParams.get('page_size') || '50', 10);
 
+  // Debounced local state for NEET AIR input to prevent keystroke flooding
+  const [localRankInput, setLocalRankInput] = useState<string>(rankParam);
+
+  useEffect(() => {
+    setLocalRankInput(rankParam);
+  }, [rankParam]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      const trimmed = localRankInput.trim();
+      if (trimmed !== rankParam) {
+        updateQueryParam('student_rank', trimmed ? trimmed : null);
+      }
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [localRankInput, rankParam]);
+
   // Multi-select parsed arrays
   const selectedColleges = useMemo(
     () => (collegeParam ? collegeParam.split('||').map((c) => c.trim()).filter(Boolean) : []),
@@ -268,6 +285,7 @@ export const MedicalSearchPage: React.FC = () => {
   };
 
   const clearAllFilters = () => {
+    setLocalRankInput('');
     const nextParams = new URLSearchParams();
     nextParams.set('counselling', counsellingParam);
     nextParams.set('year', counsellingParam === 'central' ? '2026-2027' : '2024-2025');
@@ -383,8 +401,8 @@ export const MedicalSearchPage: React.FC = () => {
     if (rankParam) {
       filters.push({
         id: 'rank',
-        label: 'NEET AIR ≤',
-        value: formatNumber(parseInt(rankParam, 10)),
+        label: 'Eligible for AIR',
+        value: `#${formatNumber(parseInt(rankParam, 10))}`,
       });
     }
     return filters;
@@ -402,7 +420,10 @@ export const MedicalSearchPage: React.FC = () => {
     else if (filterId === 'category') updateQueryParam('category', null);
     else if (filterId === 'quota') updateQueryParam('quota', null);
     else if (filterId === 'gender') updateQueryParam('gender', null);
-    else if (filterId === 'rank') updateQueryParam('student_rank', null);
+    else if (filterId === 'rank') {
+      setLocalRankInput('');
+      updateQueryParam('student_rank', null);
+    }
     else if (filterId === 'score') updateQueryParam('student_score', null);
     else if (filterId.startsWith('course_')) {
       const removed = filterId.replace('course_', '');
@@ -1081,8 +1102,8 @@ export const MedicalSearchPage: React.FC = () => {
                 <input
                   type="number"
                   placeholder="e.g. 15400"
-                  value={rankParam}
-                  onChange={(e) => updateQueryParam('student_rank', e.target.value ? e.target.value : null)}
+                  value={localRankInput}
+                  onChange={(e) => setLocalRankInput(e.target.value)}
                   className="w-40 bg-white border border-emerald-300 rounded-lg px-3 py-1.5 text-sm text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500 shadow-xs placeholder-slate-400 font-medium"
                 />
               </div>
@@ -1091,7 +1112,10 @@ export const MedicalSearchPage: React.FC = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => updateQueryParam('student_rank', null)}
+                  onClick={() => {
+                    setLocalRankInput('');
+                    updateQueryParam('student_rank', null);
+                  }}
                   className="text-xs text-slate-500 hover:text-slate-800"
                 >
                   Clear Rank
@@ -1122,8 +1146,8 @@ export const MedicalSearchPage: React.FC = () => {
                 <input
                   type="number"
                   placeholder="e.g. 24500"
-                  value={rankParam}
-                  onChange={(e) => updateQueryParam('student_rank', e.target.value ? e.target.value : null)}
+                  value={localRankInput}
+                  onChange={(e) => setLocalRankInput(e.target.value)}
                   className="w-40 bg-white border border-teal-300 rounded-lg px-3 py-1.5 text-sm text-slate-900 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-500 shadow-xs placeholder-slate-400 font-medium"
                 />
               </div>
@@ -1132,7 +1156,10 @@ export const MedicalSearchPage: React.FC = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => updateQueryParam('student_rank', null)}
+                  onClick={() => {
+                    setLocalRankInput('');
+                    updateQueryParam('student_rank', null);
+                  }}
                   className="text-xs text-slate-500 hover:text-slate-800"
                 >
                   Clear Rank
@@ -1544,8 +1571,12 @@ export const MedicalSearchPage: React.FC = () => {
             >
               <option value="rank_asc">Closing AIR (Lowest / Top Ranks)</option>
               <option value="rank_desc">Closing AIR (Highest / Easy Admission)</option>
-              <option value="score_desc">Closing NEET Marks (Highest First)</option>
-              <option value="score_asc">Closing NEET Marks (Lowest First)</option>
+              {counsellingParam !== 'central' && (
+                <>
+                  <option value="score_desc">Closing NEET Marks (Highest First)</option>
+                  <option value="score_asc">Closing NEET Marks (Lowest First)</option>
+                </>
+              )}
               <option value="year_desc">Academic Year (Recent First)</option>
               <option value="college_asc">College Name (A-Z)</option>
               <option value="course_asc">Course Name (A-Z)</option>
@@ -1649,7 +1680,9 @@ export const MedicalSearchPage: React.FC = () => {
                     <th className="py-3.5 px-3 font-semibold">Course</th>
                     <th className="py-3.5 px-3 font-semibold">Quota / Cat</th>
                     <th className="py-3.5 px-3 font-semibold text-right">Closing AIR</th>
-                    <th className="py-3.5 px-3 font-semibold text-right">NEET Marks</th>
+                    {counsellingParam !== 'central' && (
+                      <th className="py-3.5 px-3 font-semibold text-right">NEET Marks</th>
+                    )}
                     <th className="py-3.5 px-3 font-semibold text-center">Round</th>
                     <th className="py-3.5 px-3 font-semibold text-center">Year</th>
                     {rankParam && (
@@ -1661,16 +1694,16 @@ export const MedicalSearchPage: React.FC = () => {
                 <tbody className="divide-y divide-slate-100 font-normal text-slate-700">
                   {isCutoffsLoading ? (
                     <tr>
-                      <td colSpan={9} className="py-12 text-center text-slate-500">
+                      <td colSpan={counsellingParam === 'central' ? (rankParam ? 8 : 7) : (rankParam ? 9 : 8)} className="py-12 text-center text-slate-500">
                         <div className="flex flex-col items-center justify-center gap-3">
                           <Spinner className="w-6 h-6 text-emerald-600" />
-                          <span>Loading Maharashtra medical cutoffs...</span>
+                          <span>Loading medical cutoffs...</span>
                         </div>
                       </td>
                     </tr>
                   ) : !cutoffsData?.items || cutoffsData.items.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-12 text-center text-slate-500">
+                      <td colSpan={counsellingParam === 'central' ? (rankParam ? 8 : 7) : (rankParam ? 9 : 8)} className="py-12 text-center text-slate-500">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <HelpCircle className="w-8 h-8 text-slate-400" />
                           <span className="font-semibold text-slate-700">No medical cutoffs matched your filter criteria</span>
@@ -1764,22 +1797,24 @@ export const MedicalSearchPage: React.FC = () => {
                             )}
                           </td>
 
-                          {/* NEET Marks */}
-                          <td className="py-3 px-3 text-right">
-                            {row.closing_score ? (
-                              <div className="font-mono font-bold text-teal-700">
-                                {row.closing_score}
-                                <span className="text-[10px] text-slate-400 font-normal"> / 720</span>
-                              </div>
-                            ) : (
-                              <span className="text-slate-400 font-mono">—</span>
-                            )}
-                            {row.opening_score && row.opening_score !== row.closing_score && (
-                              <div className="text-[10px] text-slate-400 font-mono">
-                                Op: {row.opening_score}
-                              </div>
-                            )}
-                          </td>
+                          {/* NEET Marks (Hidden in Central MCC since MCC cutoffs are strictly by AIR) */}
+                          {counsellingParam !== 'central' && (
+                            <td className="py-3 px-3 text-right">
+                              {row.closing_score ? (
+                                <div className="font-mono font-bold text-teal-700">
+                                  {row.closing_score}
+                                  <span className="text-[10px] text-slate-400 font-normal"> / 720</span>
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 font-mono">—</span>
+                              )}
+                              {row.opening_score && row.opening_score !== row.closing_score && (
+                                <div className="text-[10px] text-slate-400 font-mono">
+                                  Op: {row.opening_score}
+                                </div>
+                              )}
+                            </td>
+                          )}
 
                           {/* Round */}
                           <td className="py-3 px-3 text-center">
@@ -1905,7 +1940,7 @@ export const MedicalSearchPage: React.FC = () => {
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs font-mono">
+                    <div className={`grid ${counsellingParam === 'central' ? 'grid-cols-1' : 'grid-cols-2'} gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs font-mono`}>
                       <div>
                         <div className="text-[10px] font-sans text-slate-500 uppercase tracking-wider">Closing AIR</div>
                         <div className="text-base font-bold text-slate-900 mt-0.5">
@@ -1913,12 +1948,14 @@ export const MedicalSearchPage: React.FC = () => {
                         </div>
                       </div>
 
-                      <div>
-                        <div className="text-[10px] font-sans text-slate-500 uppercase tracking-wider">NEET Marks</div>
-                        <div className="text-base font-bold text-teal-700 mt-0.5">
-                          {row.closing_score ? `${row.closing_score} / 720` : 'N/A'}
+                      {counsellingParam !== 'central' && (
+                        <div>
+                          <div className="text-[10px] font-sans text-slate-500 uppercase tracking-wider">NEET Marks</div>
+                          <div className="text-base font-bold text-teal-700 mt-0.5">
+                            {row.closing_score ? `${row.closing_score} / 720` : 'N/A'}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
