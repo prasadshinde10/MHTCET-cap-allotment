@@ -70,11 +70,38 @@ A complete Python toolkit for parsing MHT-CET Engineering Cutoff PDF data across
 
 ---
 
-## Installation & Setup
+## Installation & Quick Start
 
 ### 1. Prerequisites
 - **Python 3.10+**
 - **Node.js 18+** & **npm**
+
+---
+
+### 🚀 One-Click Quick Start (Windows)
+
+#### Option 1: PowerShell
+Right-click or run:
+```powershell
+.\start.ps1
+```
+
+#### Option 2: Command Prompt / Double-click
+Double-click `start.bat` or run:
+```cmd
+start.bat
+```
+
+The launcher will automatically:
+1. Create `.env` from `.env.example` if not present.
+2. Ensure database schema and seed the default admin account.
+3. Install frontend packages (`npm install --legacy-peer-deps`) if needed.
+4. Launch the FastAPI backend on [http://127.0.0.1:8000](http://127.0.0.1:8000).
+5. Launch the Vite React frontend on [http://localhost:3000](http://localhost:3000).
+
+**Default Admin Credentials**:
+- **Username**: `admin`
+- **Password**: `admin123`
 
 ---
 
@@ -85,11 +112,15 @@ A complete Python toolkit for parsing MHT-CET Engineering Cutoff PDF data across
 #### Step 1: Start Backend (FastAPI Server)
 Open a new PowerShell / Command Prompt terminal:
 ```powershell
-# Navigate to backend directory
+# Navigate to repository root and set environment
+cp .env.example .env   # if .env does not exist
 cd backend
 
 # Install Python dependencies (first time only)
 pip install -r requirements.txt
+
+# Seed database / admin user (first time)
+python -c "from app.database import engine, SessionLocal; from app.models.base import Base; import app.models; from app.auth.seed import seed_admin_user; Base.metadata.create_all(bind=engine); db=SessionLocal(); seed_admin_user(db); db.close()"
 
 # Start backend server
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
@@ -105,7 +136,7 @@ Open a second PowerShell / Command Prompt terminal:
 cd frontend
 
 # Install Node dependencies (first time only)
-npm install
+npm install --legacy-peer-deps
 
 # Start frontend development server
 npm run dev
@@ -119,7 +150,8 @@ npm run dev
 #### Step 1: Start Backend (FastAPI Server)
 Open a new terminal window:
 ```bash
-# Navigate to backend directory
+# Navigate to repository root
+cp .env.example .env   # if .env does not exist
 cd backend
 
 # Optional: Create and activate virtual environment
@@ -128,6 +160,9 @@ source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Seed database / admin user (first time)
+python3 -c "from app.database import engine, SessionLocal; from app.models.base import Base; import app.models; from app.auth.seed import seed_admin_user; Base.metadata.create_all(bind=engine); db=SessionLocal(); seed_admin_user(db); db.close()"
 
 # Start backend server
 python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
@@ -140,11 +175,13 @@ Open a second terminal window:
 cd frontend
 
 # Install dependencies
-npm install
+npm install --legacy-peer-deps
 
 # Start frontend development server
 npm run dev
 ```
+- **Frontend App**: [http://localhost:3000](http://localhost:3000)
+- **Default Admin Login**: `admin` / `admin123`
 
 ---
 

@@ -23,7 +23,7 @@ def get_target_password_hash() -> str:
         # If user passed plaintext into ADMIN_PASSWORD_HASH, hash it automatically
         return hash_password(raw)
 
-    return hash_password("Admin@12345")
+    return hash_password("admin123")
 
 
 def seed_admin_user(db: Session):

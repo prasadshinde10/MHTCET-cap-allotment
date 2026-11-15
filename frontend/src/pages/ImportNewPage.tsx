@@ -286,7 +286,7 @@ export function ImportNewPage() {
       setParseResult(null);
     },
     onSuccess: () => {
-      toast.info('PDF extraction initiated! Polling real-time progress...');
+      toast('PDF extraction initiated! Polling real-time progress...', { icon: 'ℹ️' });
       setIsProcessing(true);
       queryClient.invalidateQueries({ queryKey: ['importProgress', batchId] });
     },

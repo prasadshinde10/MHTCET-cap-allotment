@@ -9,7 +9,7 @@ class LoginRequest(BaseModel):
 class AdminResponse(BaseModel):
     id: int
     username: str
-    email: EmailStr
+    email: str
     last_login_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
@@ -18,7 +18,7 @@ class AdminResponse(BaseModel):
 class LoginResponse(BaseModel):
     id: int
     username: str
-    email: EmailStr
+    email: str
     last_login_at: Optional[datetime] = None
     access_token: str
     token_type: str = "bearer"
