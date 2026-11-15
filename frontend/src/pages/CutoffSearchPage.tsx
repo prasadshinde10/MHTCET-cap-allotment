@@ -6,7 +6,7 @@ import { getFilterOptions } from '../api/analysis';
 import { 
   Search, RotateCcw, Building2, BookOpen, MapPin, 
   Sparkles, Download, LayoutGrid, Table as TableIcon,
-  HelpCircle, AlertCircle, ArrowUpDown, Award
+  HelpCircle, AlertCircle, ArrowUpDown, Award, Building
 } from 'lucide-react';
 import SearchableSelect, { SearchableOption } from '../components/ui/SearchableSelect';
 import Select from '../components/ui/Select';
@@ -1379,6 +1379,14 @@ export const CutoffSearchPage: React.FC = () => {
               <span className="ml-1 text-[10px] bg-slate-800 text-amber-300 px-2 py-0.5 rounded-full border border-slate-700">
                 Standalone DB
               </span>
+            </Link>
+
+            <Link
+              to="/csab"
+              className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-md text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all border border-transparent hover:border-slate-700"
+            >
+              <Building className="w-4 h-4 text-teal-400" />
+              <span>CSAB Special (NIT / IIIT)</span>
             </Link>
           </div>
 

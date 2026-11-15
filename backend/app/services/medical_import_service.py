@@ -156,10 +156,15 @@ def clean_int(val: Any) -> Optional[int]:
     return int(cleaned) if cleaned else None
 
 
-def map_base_category(cat_str: str) -> str:
-    if not cat_str:
+def map_base_category(cat_str: str, quota_str: str = "") -> str:
+    combined = f"{cat_str or ''} {quota_str or ''}".upper().strip()
+    if not combined:
         return "OPEN"
-    u = cat_str.upper().strip()
+    if any(p in combined for p in ["NRI", "I.Q.", "NON-RESIDENT", "NON- RESIDENT", "FOREIGN"]):
+        return "NRI / IQ"
+    if any(p in combined for p in ["MINO", "MUSLIM", "JAIN"]):
+        return "Minority"
+    u = (cat_str or "").upper().strip()
     if "ORPHAN" in u:
         return "Orphan"
     if any(p in u for p in ["PWD", "PH", "PHYSICAL"]):
@@ -186,10 +191,6 @@ def map_base_category(cat_str: str) -> str:
         return "NT3 (NT-D)"
     if "MKB" in u:
         return "MKB"
-    if "MINO" in u or "MUSLIM" in u or "JAIN" in u:
-        return "Minority"
-    if any(p in u for p in ["NRI", "I.Q."]):
-        return "NRI / IQ"
     if any(p in u for p in ["AIQ", "A"]):
         return "AIQ"
     return BASE_CATEGORY_MAP.get(u, "OPEN")
@@ -685,7 +686,8 @@ def parse_mcc_pdf(
                                 page_allotments.append((rank, r2_i, r2_c, r2_q, r2_cat))
                             elif ('Did not' in r2_rem or 'No Upgradation' in r2_rem or r2_rem == 'Not Allotted.'):
                                 if r1_rem == 'Reported' and r1_i and r1_i != '-':
-                                    page_allotments.append((rank, r1_i, r1_c, r1_q, 'Open'))
+                                    r_cat = r2_cand_cat if (r2_cand_cat and r2_cand_cat != '-') else 'Open'
+                                    page_allotments.append((rank, r1_i, r1_c, r1_q, r_cat))
 
                     elif round_name == "Round 3":
                         rank = int(vals[1]) if vals[1].isdigit() else int(vals[0])
@@ -698,10 +700,11 @@ def parse_mcc_pdf(
                             if r3_i and r3_i != '-' and ('Fresh' in r3_rem or 'Upgraded' in r3_rem or 'Retained' in r3_rem):
                                 page_allotments.append((rank, r3_i, r3_c, r3_q, r3_cat))
                             elif ('Did not' in r3_rem or 'No Upgradation' in r3_rem or r3_rem == 'Not Allotted.'):
+                                r_cat = r3_cand_cat if (r3_cand_cat and r3_cand_cat != '-') else 'Open'
                                 if r2_rem in ('Reported', 'Retained') and r2_i and r2_i != '-':
-                                    page_allotments.append((rank, r2_i, r2_c, r2_q, 'Open'))
+                                    page_allotments.append((rank, r2_i, r2_c, r2_q, r_cat))
                                 elif r1_rem == 'Reported' and r1_i and r1_i != '-':
-                                    page_allotments.append((rank, r1_i, r1_c, r1_q, 'Open'))
+                                    page_allotments.append((rank, r1_i, r1_c, r1_q, r_cat))
 
             # Fallback to text line parser if find_tables produced no allotments
             if not page_allotments:
@@ -740,7 +743,7 @@ def parse_mcc_pdf(
         clean_quota = QUOTA_NAME_MAP.get(quota.strip(), quota.strip())
         norm_cat = cat.strip()
         quota_category = f"{clean_quota} - {norm_cat}"
-        base_cat = map_base_category(norm_cat)
+        base_cat = map_base_category(norm_cat, clean_quota)
         grouped[(inst, course, quota_category, base_cat)].append(rank)
 
     records = []

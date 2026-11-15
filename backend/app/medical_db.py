@@ -137,6 +137,28 @@ def _init_single_sqlite_db(conn: sqlite3.Connection):
         except Exception as mig_err:
             logger.warning(f"Error checking counselling_type column: {mig_err}")
 
+        # Migration: Normalize NRI, Foreign, and Minority quota categories that were misclassified as OPEN
+        try:
+            cur.execute("""
+                UPDATE medical_cutoffs 
+                SET base_category = 'NRI / IQ'
+                WHERE base_category = 'OPEN' 
+                  AND (quota_category LIKE '%NRI%' 
+                       OR quota_category LIKE '%Non-Resident%' 
+                       OR quota_category LIKE '%Non- Resident%'
+                       OR quota_category LIKE '%Foreign%');
+            """)
+            cur.execute("""
+                UPDATE medical_cutoffs 
+                SET base_category = 'Minority'
+                WHERE base_category = 'OPEN' 
+                  AND (quota_category LIKE '%Minority%' 
+                       OR quota_category LIKE '%Muslim%' 
+                       OR quota_category LIKE '%Jain%');
+            """)
+        except Exception as cat_mig_err:
+            logger.warning(f"Error normalizing medical_cutoffs categories: {cat_mig_err}")
+
         # Indexes
         cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_year ON medical_cutoffs(academic_year);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_med_cutoffs_round ON medical_cutoffs(round);")
@@ -160,6 +182,27 @@ def init_medical_database(counselling_type: Optional[str] = None):
     """
     if engine.dialect.name == "postgresql":
         Base.metadata.create_all(bind=engine)
+        try:
+            with engine.begin() as pg_conn:
+                pg_conn.execute(text("""
+                    UPDATE medical_cutoffs 
+                    SET base_category = 'NRI / IQ'
+                    WHERE base_category = 'OPEN' 
+                      AND (quota_category LIKE '%NRI%' 
+                           OR quota_category LIKE '%Non-Resident%' 
+                           OR quota_category LIKE '%Non- Resident%'
+                           OR quota_category LIKE '%Foreign%');
+                """))
+                pg_conn.execute(text("""
+                    UPDATE medical_cutoffs 
+                    SET base_category = 'Minority'
+                    WHERE base_category = 'OPEN' 
+                      AND (quota_category LIKE '%Minority%' 
+                           OR quota_category LIKE '%Muslim%' 
+                           OR quota_category LIKE '%Jain%');
+                """))
+        except Exception as pg_mig_err:
+            logger.warning(f"Error normalizing PostgreSQL medical_cutoffs categories: {pg_mig_err}")
     else:
         if counselling_type:
             _init_single_sqlite_db(get_medical_connection(counselling_type))
@@ -664,21 +707,19 @@ def query_medical_cutoffs(
 
     # College Name/Code query
     if college_name:
-        c_names = [c.strip() for c in re.split(r"\|\||,", college_name) if c.strip()]
+        if "||" in college_name:
+            c_names = [c.strip() for c in college_name.split("||") if c.strip()]
+        else:
+            c_names = [college_name.strip()] if college_name.strip() else []
         if c_names:
             if is_pg:
-                conds = []
-                for idx, c_item in enumerate(c_names):
-                    key = f"col_name_{idx}"
-                    conds.append(f"(col.college_name ILIKE :{key} OR col.college_code ILIKE :{key})")
-                    params[key] = f"%{c_item}%"
-                where_clauses.append(f"({' OR '.join(conds)})")
+                where_clauses.append("(col.college_name = ANY(:col_name_list) OR col.college_code = ANY(:col_name_list))")
+                params["col_name_list"] = c_names
             else:
-                conds = ["(col.college_name LIKE ? OR col.college_code LIKE ?)" for _ in c_names]
-                where_clauses.append(f"({' OR '.join(conds)})")
-                for c_item in c_names:
-                    sqlite_params.append(f"%{c_item}%")
-                    sqlite_params.append(f"%{c_item}%")
+                placeholders = ",".join(["?"] * len(c_names))
+                where_clauses.append(f"(col.college_name IN ({placeholders}) OR col.college_code IN ({placeholders}))")
+                sqlite_params.extend(c_names)
+                sqlite_params.extend(c_names)
 
     # Course ID
     if course_id:
@@ -691,21 +732,21 @@ def query_medical_cutoffs(
 
     # Course Name query
     if course_name:
-        cr_names = [cr.strip() for cr in re.split(r"\|\||,", course_name) if cr.strip()]
+        if "||" in course_name:
+            cr_names = [cr.strip() for cr in course_name.split("||") if cr.strip()]
+        elif "," in course_name:
+            cr_names = [cr.strip() for cr in course_name.split(",") if cr.strip()]
+        else:
+            cr_names = [course_name.strip()] if course_name.strip() else []
         if cr_names:
             if is_pg:
-                conds = []
-                for idx, cr_item in enumerate(cr_names):
-                    key = f"crs_name_{idx}"
-                    conds.append(f"(crs.course_name ILIKE :{key} OR crs.course_code ILIKE :{key})")
-                    params[key] = f"%{cr_item}%"
-                where_clauses.append(f"({' OR '.join(conds)})")
+                where_clauses.append("(crs.course_name = ANY(:crs_name_list) OR crs.course_code = ANY(:crs_name_list))")
+                params["crs_name_list"] = cr_names
             else:
-                conds = ["(crs.course_name LIKE ? OR crs.course_code LIKE ?)" for _ in cr_names]
-                where_clauses.append(f"({' OR '.join(conds)})")
-                for cr_item in cr_names:
-                    sqlite_params.append(f"%{cr_item}%")
-                    sqlite_params.append(f"%{cr_item}%")
+                placeholders = ",".join(["?"] * len(cr_names))
+                where_clauses.append(f"(crs.course_name IN ({placeholders}) OR crs.course_code IN ({placeholders}))")
+                sqlite_params.extend(cr_names)
+                sqlite_params.extend(cr_names)
 
     # College Type
     if college_type:
@@ -790,15 +831,14 @@ def query_medical_cutoffs(
             where_clauses.append("c.closing_score <= ?")
             sqlite_params.append(max_score)
 
-    # Student NEET AIR filter
+    # Student NEET AIR filter (filters colleges where student is eligible: closing_rank >= student_rank)
     if student_rank is not None:
-        threshold = int(student_rank * 0.90)
         if is_pg:
-            where_clauses.append("(c.closing_rank IS NOT NULL AND c.closing_rank >= :student_threshold)")
-            params["student_threshold"] = threshold
+            where_clauses.append("(c.closing_rank IS NOT NULL AND c.closing_rank >= :student_rank)")
+            params["student_rank"] = student_rank
         else:
             where_clauses.append("(c.closing_rank IS NOT NULL AND c.closing_rank >= ?)")
-            sqlite_params.append(threshold)
+            sqlite_params.append(student_rank)
 
     # Student NEET Score filter
     if student_score is not None:
@@ -811,11 +851,12 @@ def query_medical_cutoffs(
 
     where_sql = " AND ".join(where_clauses)
 
+    is_central = counselling_type and counselling_type.lower() in ("central", "mcc", "aiq")
     order_map = {
         "rank_asc": "c.closing_rank ASC NULLS LAST, col.college_name ASC",
         "rank_desc": "c.closing_rank DESC NULLS LAST, col.college_name ASC",
-        "score_desc": "c.closing_score DESC NULLS LAST, c.closing_rank ASC NULLS LAST",
-        "score_asc": "c.closing_score ASC NULLS LAST, c.closing_rank ASC NULLS LAST",
+        "score_desc": ("c.closing_rank ASC NULLS LAST, col.college_name ASC" if is_central else "c.closing_score DESC NULLS LAST, c.closing_rank ASC NULLS LAST"),
+        "score_asc": ("c.closing_rank DESC NULLS LAST, col.college_name ASC" if is_central else "c.closing_score ASC NULLS LAST, c.closing_rank ASC NULLS LAST"),
         "year_desc": "c.academic_year DESC, c.round ASC, c.closing_rank ASC NULLS LAST",
         "year_asc": "c.academic_year ASC, c.round ASC, c.closing_rank ASC NULLS LAST",
         "college_asc": "col.college_name ASC, c.academic_year DESC",

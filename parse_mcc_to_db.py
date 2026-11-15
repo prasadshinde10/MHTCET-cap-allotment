@@ -52,10 +52,15 @@ QUOTA_NAME_MAP = {
 }
 
 # Base category normalization
-def map_base_category(cat_str: str) -> str:
-    if not cat_str:
+def map_base_category(cat_str: str, quota_str: str = "") -> str:
+    combined = f"{cat_str or ''} {quota_str or ''}".upper().strip()
+    if not combined:
         return "OPEN"
-    u = cat_str.upper().strip()
+    if any(p in combined for p in ["NRI", "I.Q.", "NON-RESIDENT", "NON- RESIDENT", "FOREIGN"]):
+        return "NRI / IQ"
+    if any(p in combined for p in ["MINO", "MUSLIM", "JAIN"]):
+        return "Minority"
+    u = (cat_str or "").upper().strip()
     if "PWD" in u or "PH" in u or "PHYSICAL" in u:
         return "PwD / PH"
     if "OBC" in u or "BC" in u:
@@ -66,10 +71,6 @@ def map_base_category(cat_str: str) -> str:
         return "ST"
     if "EWS" in u:
         return "EWS"
-    if "MINO" in u or "MUSLIM" in u or "JAIN" in u:
-        return "Minority"
-    if "NRI" in u:
-        return "NRI / IQ"
     return "OPEN"
 
 INDIAN_STATES = [
@@ -395,7 +396,7 @@ def ingest_mcc_pdf(
         clean_quota = QUOTA_NAME_MAP.get(quota.strip(), quota.strip())
         norm_cat = cat.strip()
         quota_category = f"{clean_quota} - {norm_cat}"
-        base_cat = map_base_category(norm_cat)
+        base_cat = map_base_category(norm_cat, clean_quota)
         grouped[(inst, course, quota_category, base_cat)].append(rank)
         
     print(f" -> Aggregated into {len(grouped):,} unique cutoff groups.")
