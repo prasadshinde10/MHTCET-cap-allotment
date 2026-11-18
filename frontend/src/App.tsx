@@ -11,6 +11,7 @@ import { BitsSearchPage } from './pages/BitsSearchPage';
 import { MedicalSearchPage } from './pages/MedicalSearchPage';
 import { SearchHistoryPage } from './pages/SearchHistoryPage';
 import { ImportNewPage } from './pages/ImportNewPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 const App: React.FC = () => {
@@ -33,6 +34,7 @@ const App: React.FC = () => {
         <Route path="/medical" element={<MedicalSearchPage />} />
         <Route path="/imports/new" element={<ImportNewPage />} />
         <Route path="/history" element={<SearchHistoryPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
 
         {/* Redirects from legacy/removed routes directly to Cutoff Search */}
         <Route path="/dashboard" element={<Navigate to="/search" replace />} />
@@ -45,7 +47,6 @@ const App: React.FC = () => {
         <Route path="/imports" element={<Navigate to="/imports/new" replace />} />
         <Route path="/parser-errors" element={<Navigate to="/search" replace />} />
         <Route path="/audit-logs" element={<Navigate to="/search" replace />} />
-        <Route path="/settings" element={<Navigate to="/search" replace />} />
       </Route>
 
       <Route path="*" element={<NotFoundPage />} />

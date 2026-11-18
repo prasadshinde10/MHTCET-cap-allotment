@@ -45,6 +45,7 @@ export interface CutoffFilters {
   max_percentile?: number;
   min_merit?: number;
   max_merit?: number;
+  rank_tolerance?: number;
   sort_by?: string;
   is_deleted?: boolean;
   quota_group?: string;

@@ -140,6 +140,7 @@ export const CsabSearchPage: React.FC = () => {
   const [gender, setGender] = useState<string>(searchParams.get('gender') || '');
   const [academicYear, setAcademicYear] = useState<string>(searchParams.get('year') || '2026');
   const [maxRank, setMaxRank] = useState<string>(searchParams.get('max_rank') || '');
+  const [rankTolerance, setRankTolerance] = useState<string>(searchParams.get('rank_tolerance') || '');
   const [page, setPage] = useState<number>(() => {
     const p = parseInt(searchParams.get('page') || '1', 10);
     return isNaN(p) || p < 1 ? 1 : p;
@@ -178,6 +179,7 @@ export const CsabSearchPage: React.FC = () => {
     if (gender) params.set('gender', gender);
     if (academicYear) params.set('year', academicYear);
     if (maxRank) params.set('max_rank', maxRank);
+    if (rankTolerance) params.set('rank_tolerance', rankTolerance);
     if (page > 1) params.set('page', String(page));
     if (pageSize !== 100) params.set('page_size', String(pageSize));
     if (sortBy !== 'rank_asc') params.set('sort_by', sortBy);
@@ -194,6 +196,7 @@ export const CsabSearchPage: React.FC = () => {
     gender,
     academicYear,
     maxRank,
+    rankTolerance,
     page,
     pageSize,
     sortBy,
@@ -213,6 +216,7 @@ export const CsabSearchPage: React.FC = () => {
       gender: gender || undefined,
       academic_year: academicYear ? parseInt(academicYear, 10) : undefined,
       max_rank: maxRank ? parseInt(maxRank, 10) : undefined,
+      rank_tolerance: rankTolerance ? parseInt(rankTolerance, 10) : undefined,
       page,
       page_size: pageSize,
       sort_by: sortBy,
@@ -228,6 +232,7 @@ export const CsabSearchPage: React.FC = () => {
     gender,
     academicYear,
     maxRank,
+    rankTolerance,
     page,
     pageSize,
     sortBy,
@@ -344,6 +349,7 @@ export const CsabSearchPage: React.FC = () => {
     setGender('');
     setAcademicYear('2026');
     setMaxRank('');
+    setRankTolerance('');
     setPage(1);
     setSortBy('rank_asc');
   };
@@ -370,6 +376,9 @@ export const CsabSearchPage: React.FC = () => {
     if (quota) list.push({ id: 'quota', label: 'Quota', value: quota });
     if (gender) list.push({ id: 'gender', label: 'Seat Pool', value: gender });
     if (maxRank) list.push({ id: 'rank', label: 'CRL Rank ≤', value: `#${Number(maxRank).toLocaleString()}` });
+    if (maxRank && rankTolerance && Number(rankTolerance) > 0) {
+      list.push({ id: 'tolerance', label: 'Tolerance Buffer', value: `+${Number(rankTolerance).toLocaleString()} ranks` });
+    }
     return list;
   }, [
     selectedRounds,
@@ -381,6 +390,7 @@ export const CsabSearchPage: React.FC = () => {
     quota,
     gender,
     maxRank,
+    rankTolerance,
   ]);
 
   const removeFilterChip = (id: string) => {
@@ -408,7 +418,11 @@ export const CsabSearchPage: React.FC = () => {
     if (id === 'category') setCategory('');
     if (id === 'quota') setQuota('');
     if (id === 'gender') setGender('');
-    if (id === 'rank') setMaxRank('');
+    if (id === 'rank') {
+      setMaxRank('');
+      setRankTolerance('');
+    }
+    if (id === 'tolerance') setRankTolerance('');
   };
 
   const candidateRankNum = maxRank ? parseInt(maxRank, 10) : null;
@@ -705,14 +719,79 @@ export const CsabSearchPage: React.FC = () => {
                   value={maxRank}
                   onChange={(e) => {
                     setMaxRank(e.target.value);
+                    if (!e.target.value) setRankTolerance('');
                     setPage(1);
                   }}
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                 />
+                {maxRank && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMaxRank('');
+                      setRankTolerance('');
+                      setPage(1);
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
               <p className="text-[10px] text-slate-400 mt-1">
                 Filters options where Closing Rank &ge; your rank
               </p>
+
+              {maxRank && (
+                <div className="mt-2.5 p-2 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                      <span>Rank Tolerance Buffer</span>
+                      <span className="text-[10px] font-normal text-slate-500">(±x ranks)</span>
+                    </label>
+                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                      Reach / Aspirational
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <input
+                      type="number"
+                      min="0"
+                      step="100"
+                      placeholder="e.g. 1000"
+                      value={rankTolerance}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || Number(val) >= 0) {
+                          setRankTolerance(val);
+                          setPage(1);
+                        }
+                      }}
+                      className="w-24 px-2 py-1 text-xs border border-gray-300 rounded font-mono focus:ring-1 focus:ring-teal-500 focus:outline-none bg-white"
+                    />
+                    {['0', '500', '1000', '2500', '5000'].map((preset) => {
+                      const isSelected = (preset === '0' && (!rankTolerance || rankTolerance === '0')) || rankTolerance === preset;
+                      return (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => {
+                            setRankTolerance(preset === '0' ? '' : preset);
+                            setPage(1);
+                          }}
+                          className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors ${
+                            isSelected
+                              ? 'bg-teal-600 text-white font-bold shadow-2xs'
+                              : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {preset === '0' ? 'Exact' : `+${preset}`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <Select
@@ -871,7 +950,11 @@ export const CsabSearchPage: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {cutoffResponse.items.map((row: CsabCutoff) => {
-                  const isEligible = candidateRankNum ? candidateRankNum <= row.closing_rank : null;
+                  const toleranceNum = rankTolerance ? parseInt(rankTolerance, 10) : 0;
+                  const isStrictlyEligible = candidateRankNum ? candidateRankNum <= row.closing_rank : null;
+                  const isWithinTolerance = candidateRankNum && !isStrictlyEligible && toleranceNum > 0
+                    ? row.closing_rank >= Math.max(1, candidateRankNum - toleranceNum)
+                    : false;
                   const isSafe = candidateRankNum ? candidateRankNum <= row.opening_rank : false;
 
                   return (
@@ -940,9 +1023,13 @@ export const CsabSearchPage: React.FC = () => {
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                               Safe
                             </span>
-                          ) : isEligible ? (
+                          ) : isStrictlyEligible ? (
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800 border border-teal-200">
                               In Reach
+                            </span>
+                          ) : isWithinTolerance ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300" title={`Closing CRL #${row.closing_rank.toLocaleString()} is within ${toleranceNum.toLocaleString()} tolerance`}>
+                              ⚡ Reach
                             </span>
                           ) : (
                             <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500">
@@ -962,7 +1049,11 @@ export const CsabSearchPage: React.FC = () => {
         /* Card View */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {cutoffResponse.items.map((row: CsabCutoff) => {
-            const isEligible = candidateRankNum ? candidateRankNum <= row.closing_rank : null;
+            const toleranceNum = rankTolerance ? parseInt(rankTolerance, 10) : 0;
+            const isStrictlyEligible = candidateRankNum ? candidateRankNum <= row.closing_rank : null;
+            const isWithinTolerance = candidateRankNum && !isStrictlyEligible && toleranceNum > 0
+              ? row.closing_rank >= Math.max(1, candidateRankNum - toleranceNum)
+              : false;
             const isSafe = candidateRankNum ? candidateRankNum <= row.opening_rank : false;
 
             return (
@@ -1024,9 +1115,13 @@ export const CsabSearchPage: React.FC = () => {
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
                         Safe Choice (Rank {candidateRankNum.toLocaleString()} &le; {row.opening_rank.toLocaleString()})
                       </span>
-                    ) : isEligible ? (
+                    ) : isStrictlyEligible ? (
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800">
                         In Reach (Rank {candidateRankNum.toLocaleString()} &le; {row.closing_rank.toLocaleString()})
+                      </span>
+                    ) : isWithinTolerance ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                        ⚡ Within Tolerance (Rank {candidateRankNum.toLocaleString()} vs CRL {row.closing_rank.toLocaleString()})
                       </span>
                     ) : (
                       <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500">

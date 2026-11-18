@@ -72,6 +72,7 @@ export interface IiserCutoffParams {
   degree_type?: string;
   category?: string;
   max_rank?: number;
+  rank_tolerance?: number;
   page?: number;
   page_size?: number;
   sort_by?: string;

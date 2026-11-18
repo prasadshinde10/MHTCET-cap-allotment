@@ -207,6 +207,7 @@ def query_iiser_cutoffs(
     degree_type: Optional[str] = None,
     category: Optional[str] = None,
     max_rank: Optional[int] = None,
+    rank_tolerance: Optional[int] = 0,
     page: int = 1,
     page_size: int = 50,
     sort_by: str = "rank_asc",
@@ -301,10 +302,11 @@ def query_iiser_cutoffs(
                 where_clauses.append("cat.category_code = ?")
                 params.append(category.strip())
 
-        # Max Rank (Student Rank chance predictor: student rank <= closing_rank)
+        # Max Rank (Student Rank chance predictor: student rank <= closing_rank + rank_tolerance)
         if max_rank is not None and max_rank > 0:
+            effective_rank = max(1, max_rank - (rank_tolerance or 0))
             where_clauses.append("c.closing_rank >= ?")
-            params.append(max_rank)
+            params.append(effective_rank)
 
         where_sql = " AND ".join(where_clauses)
 

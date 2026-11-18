@@ -48,6 +48,7 @@ export const IiserSearchPage: React.FC = () => {
   const degreeParam = searchParams.get('degree') || '';
   const categoryParam = searchParams.get('category') || '';
   const rankParam = searchParams.get('max_rank') || '';
+  const toleranceParam = searchParams.get('rank_tolerance') || '';
   const sortParam = searchParams.get('sort_by') || 'rank_asc';
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
   const pageSizeParam = parseInt(searchParams.get('page_size') || '50', 10);
@@ -150,11 +151,12 @@ export const IiserSearchPage: React.FC = () => {
       degree_type: degreeParam || undefined,
       category: categoryParam || undefined,
       max_rank: rankParam ? parseInt(rankParam, 10) : undefined,
+      rank_tolerance: toleranceParam ? parseInt(toleranceParam, 10) : undefined,
       sort_by: sortParam,
       page: pageParam,
       page_size: pageSizeParam,
     };
-  }, [roundParam, instituteParam, programParam, degreeParam, categoryParam, rankParam, sortParam, pageParam, pageSizeParam]);
+  }, [roundParam, instituteParam, programParam, degreeParam, categoryParam, rankParam, toleranceParam, sortParam, pageParam, pageSizeParam]);
 
   // Fetch Cutoffs
   const { data: cutoffsData, isLoading: isLoadingCutoffs, isFetching: isFetchingCutoffs } = useQuery({
@@ -253,8 +255,11 @@ export const IiserSearchPage: React.FC = () => {
     if (rankParam) {
       list.push({ id: 'max_rank', label: 'Your Rank ≤', value: rankParam });
     }
+    if (rankParam && toleranceParam && Number(toleranceParam) > 0) {
+      list.push({ id: 'rank_tolerance', label: 'Tolerance Buffer', value: `+${Number(toleranceParam).toLocaleString()} ranks` });
+    }
     return list;
-  }, [selectedRounds, selectedInstitutes, selectedPrograms, degreeParam, categoryParam, rankParam]);
+  }, [selectedRounds, selectedInstitutes, selectedPrograms, degreeParam, categoryParam, rankParam, toleranceParam]);
 
   const handleRemoveFilter = (id: string) => {
     if (id.startsWith('round:')) {
@@ -269,6 +274,12 @@ export const IiserSearchPage: React.FC = () => {
       const progVal = id.replace('program:', '');
       const remaining = selectedPrograms.filter((p) => p !== progVal);
       updateParam('program', remaining.join('||'));
+    } else if (id === 'max_rank') {
+      const next = new URLSearchParams(searchParams);
+      next.delete('max_rank');
+      next.delete('rank_tolerance');
+      next.delete('page');
+      setSearchParams(next);
     } else {
       updateParam(id, '');
     }
@@ -585,11 +596,85 @@ export const IiserSearchPage: React.FC = () => {
                 type="number"
                 placeholder="e.g. 3500 (Chance Finder)"
                 value={rankParam}
-                onChange={(e) => updateParam('max_rank', e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pl-8 text-xs text-slate-700 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                onChange={(e) => {
+                  const next = new URLSearchParams(searchParams);
+                  if (e.target.value) {
+                    next.set('max_rank', e.target.value);
+                  } else {
+                    next.delete('max_rank');
+                    next.delete('rank_tolerance');
+                  }
+                  next.delete('page');
+                  setSearchParams(next);
+                }}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pl-8 pr-7 text-xs text-slate-700 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               />
               <Sparkles className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-primary-500" />
+              {rankParam && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = new URLSearchParams(searchParams);
+                    next.delete('max_rank');
+                    next.delete('rank_tolerance');
+                    next.delete('page');
+                    setSearchParams(next);
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                >
+                  ✕
+                </button>
+              )}
             </div>
+
+            {rankParam && (
+              <div className="mt-2.5 p-2 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                    <span>Rank Tolerance Buffer</span>
+                    <span className="text-[10px] font-normal text-slate-500">(±x ranks)</span>
+                  </label>
+                  <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                    Reach / Aspirational
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <input
+                    type="number"
+                    min="0"
+                    step="100"
+                    placeholder="e.g. 1000"
+                    value={toleranceParam}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '' || Number(val) >= 0) {
+                        updateParam('rank_tolerance', val);
+                      }
+                    }}
+                    className="w-24 px-2 py-1 text-xs border border-gray-300 rounded font-mono focus:ring-1 focus:ring-primary-500 focus:outline-none bg-white"
+                  />
+                  {['0', '500', '1000', '2500', '5000'].map((preset) => {
+                    const isSelected = (preset === '0' && (!toleranceParam || toleranceParam === '0')) || toleranceParam === preset;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => {
+                          updateParam('rank_tolerance', preset === '0' ? '' : preset);
+                        }}
+                        className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors ${
+                          isSelected
+                            ? 'bg-primary-600 text-white font-bold shadow-2xs'
+                            : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        {preset === '0' ? 'Exact' : `+${preset}`}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -615,8 +700,13 @@ export const IiserSearchPage: React.FC = () => {
             <Spinner className="h-4 w-4 text-primary-600" />
           )}
           {rankParam && (
-            <Badge variant="success" className="font-semibold text-xs">
-              Filtering options where closing rank ≥ {formatNumber(parseInt(rankParam, 10))}
+            <Badge variant="success" className="font-semibold text-xs flex items-center gap-1">
+              <span>Filtering options where closing rank ≥ {formatNumber(Math.max(1, parseInt(rankParam, 10) - (toleranceParam ? parseInt(toleranceParam, 10) : 0)))}</span>
+              {toleranceParam && Number(toleranceParam) > 0 && (
+                <span className="text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.2 rounded border border-amber-300 font-bold">
+                  +{formatNumber(parseInt(toleranceParam, 10))} buffer
+                </span>
+              )}
             </Badge>
           )}
         </div>
@@ -732,7 +822,11 @@ export const IiserSearchPage: React.FC = () => {
               <tbody className="divide-y divide-slate-100 bg-white">
                 {cutoffsData.items.map((item) => {
                   const studentRank = rankParam ? parseInt(rankParam, 10) : 0;
-                  const isEligible = studentRank > 0 && studentRank <= item.closing_rank;
+                  const toleranceNum = toleranceParam ? parseInt(toleranceParam, 10) : 0;
+                  const isStrictlyEligible = studentRank > 0 && studentRank <= item.closing_rank;
+                  const isWithinTolerance = studentRank > 0 && !isStrictlyEligible && toleranceNum > 0
+                    ? item.closing_rank >= Math.max(1, studentRank - toleranceNum)
+                    : false;
 
                   return (
                     <tr
@@ -806,10 +900,14 @@ export const IiserSearchPage: React.FC = () => {
                       {/* Eligibility Column (if student rank entered) */}
                       {rankParam && (
                         <td className="whitespace-nowrap px-4 py-3 text-center">
-                          {isEligible ? (
+                          {isStrictlyEligible ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
                               <Check className="h-3 w-3" />
                               Likely Admit
+                            </span>
+                          ) : isWithinTolerance ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 border border-amber-300 px-2 py-0.5 text-xs font-bold text-amber-800" title={`Closing rank #${item.closing_rank.toLocaleString()} is within ${toleranceNum.toLocaleString()} tolerance`}>
+                              ⚡ Reach
                             </span>
                           ) : (
                             <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
@@ -841,7 +939,11 @@ export const IiserSearchPage: React.FC = () => {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {cutoffsData.items.map((item) => {
               const studentRank = rankParam ? parseInt(rankParam, 10) : 0;
-              const isEligible = studentRank > 0 && studentRank <= item.closing_rank;
+              const toleranceNum = toleranceParam ? parseInt(toleranceParam, 10) : 0;
+              const isStrictlyEligible = studentRank > 0 && studentRank <= item.closing_rank;
+              const isWithinTolerance = studentRank > 0 && !isStrictlyEligible && toleranceNum > 0
+                ? item.closing_rank >= Math.max(1, studentRank - toleranceNum)
+                : false;
 
               return (
                 <div
@@ -894,10 +996,16 @@ export const IiserSearchPage: React.FC = () => {
                       <div className="text-lg font-extrabold text-primary-700 leading-none mt-0.5">
                         {formatNumber(item.closing_rank)}
                       </div>
-                      {rankParam && isEligible && (
-                        <div className="text-[10px] text-emerald-600 font-semibold mt-1">
-                          ✓ Rank fits cutoff
-                        </div>
+                      {rankParam && (
+                        isStrictlyEligible ? (
+                          <div className="text-[10px] text-emerald-600 font-semibold mt-1">
+                            ✓ Rank fits cutoff
+                          </div>
+                        ) : isWithinTolerance ? (
+                          <div className="text-[10px] text-amber-700 font-bold mt-1">
+                            ⚡ Within Tolerance (+{formatNumber(toleranceNum)})
+                          </div>
+                        ) : null
                       )}
                     </div>
                   </div>
@@ -966,10 +1074,26 @@ export const IiserSearchPage: React.FC = () => {
                     </td>
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((r) => {
                       const rank = g.rounds[r];
+                      const studentRank = rankParam ? parseInt(rankParam, 10) : 0;
+                      const toleranceNum = toleranceParam ? parseInt(toleranceParam, 10) : 0;
+                      const isStrict = studentRank > 0 && rank ? studentRank <= rank : false;
+                      const isTolerance = studentRank > 0 && rank && !isStrict && toleranceNum > 0
+                        ? rank >= Math.max(1, studentRank - toleranceNum)
+                        : false;
+
                       return (
                         <td key={r} className="px-3 py-2.5 text-right font-medium whitespace-nowrap">
                           {rank ? (
-                            <span className="text-slate-900 font-semibold">
+                            <span
+                              className={`font-semibold ${
+                                isStrict
+                                  ? 'text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded ring-1 ring-emerald-200'
+                                  : isTolerance
+                                  ? 'text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded ring-1 ring-amber-300'
+                                  : 'text-slate-900'
+                              }`}
+                              title={isStrict ? 'Eligible' : isTolerance ? `Within tolerance buffer (+${formatNumber(toleranceNum)})` : undefined}
+                            >
                               {formatNumber(rank)}
                             </span>
                           ) : (

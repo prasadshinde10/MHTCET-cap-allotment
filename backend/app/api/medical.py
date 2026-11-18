@@ -64,6 +64,7 @@ def get_medical_cutoffs_endpoint(
     gender: Optional[str] = Query(None, description="Gender / Seat Quota: women (30% quota) or general"),
     student_rank: Optional[int] = Query(None, description="Student NEET AIR (filters reachable colleges and assigns chances)"),
     student_score: Optional[int] = Query(None, description="Student NEET Score / Marks out of 720"),
+    rank_tolerance: Optional[int] = Query(0, ge=0, description="Rank tolerance buffer in AIR"),
     min_rank: Optional[int] = Query(None, description="Minimum rank"),
     max_rank: Optional[int] = Query(None, description="Maximum rank"),
     min_score: Optional[int] = Query(None, description="Minimum score"),
@@ -92,6 +93,7 @@ def get_medical_cutoffs_endpoint(
             gender=gender,
             student_rank=student_rank,
             student_score=student_score,
+            rank_tolerance=rank_tolerance,
             min_rank=min_rank,
             max_rank=max_rank,
             min_score=min_score,
@@ -132,6 +134,7 @@ def export_medical_cutoffs_csv(
     gender: Optional[str] = Query(None),
     student_rank: Optional[int] = Query(None),
     student_score: Optional[int] = Query(None),
+    rank_tolerance: Optional[int] = Query(0, ge=0),
     sort_by: str = Query("rank_asc"),
 ):
     """
@@ -154,6 +157,7 @@ def export_medical_cutoffs_csv(
             gender=gender,
             student_rank=student_rank,
             student_score=student_score,
+            rank_tolerance=rank_tolerance,
             page=1,
             page_size=10000,
             sort_by=sort_by,

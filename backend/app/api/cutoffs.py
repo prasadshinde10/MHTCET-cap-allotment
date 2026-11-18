@@ -35,6 +35,7 @@ def get_cutoff_query(
     max_percentile: Optional[float] = None,
     min_merit: Optional[int] = None,
     max_merit: Optional[int] = None,
+    rank_tolerance: Optional[int] = 0,
     is_deleted: Optional[bool] = False,
     quota_group: Optional[str] = None,
     college_type: Optional[str] = None,
@@ -199,7 +200,8 @@ def get_cutoff_query(
         stmt = stmt.where(Cutoff.percentile <= max_percentile)
 
     if min_merit is not None:
-        stmt = stmt.where(Cutoff.merit_number >= min_merit)
+        effective_min_merit = max(1, min_merit - (rank_tolerance or 0))
+        stmt = stmt.where(Cutoff.merit_number >= effective_min_merit)
     if max_merit is not None:
         stmt = stmt.where(Cutoff.merit_number <= max_merit)
 
@@ -267,6 +269,7 @@ def list_cutoffs(
     max_percentile: Optional[float] = None,
     min_merit: Optional[int] = None,
     max_merit: Optional[int] = None,
+    rank_tolerance: Optional[int] = Query(0, ge=0, description="Rank tolerance buffer"),
     sort_by: Optional[str] = Query("percentile_desc"),
     is_deleted: Optional[bool] = False,
     quota_group: Optional[str] = None,
@@ -297,6 +300,7 @@ def list_cutoffs(
         max_percentile=max_percentile,
         min_merit=min_merit,
         max_merit=max_merit,
+        rank_tolerance=rank_tolerance,
         is_deleted=is_deleted,
         quota_group=quota_group,
         college_type=college_type,
@@ -362,6 +366,7 @@ def export_cutoffs(
     max_percentile: Optional[float] = None,
     min_merit: Optional[int] = None,
     max_merit: Optional[int] = None,
+    rank_tolerance: Optional[int] = Query(0, ge=0, description="Rank tolerance buffer"),
     sort_by: Optional[str] = Query("percentile_desc"),
     is_deleted: Optional[bool] = False,
     quota_group: Optional[str] = None,
@@ -388,6 +393,7 @@ def export_cutoffs(
         max_percentile=max_percentile,
         min_merit=min_merit,
         max_merit=max_merit,
+        rank_tolerance=rank_tolerance,
         is_deleted=is_deleted,
         quota_group=quota_group,
         college_type=college_type,

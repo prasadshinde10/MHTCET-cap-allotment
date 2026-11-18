@@ -141,6 +141,9 @@ export const CutoffSearchPage: React.FC = () => {
     if (mode === 'percentile' || (!mode && !searchParams.get('rank') && searchParams.get('percentile'))) return '';
     return searchParams.get('rank') || '';
   });
+  const [rankTolerance, setRankTolerance] = useState<string>(() => {
+    return searchParams.get('rank_tolerance') || '';
+  });
 
   // Check if candidate score (percentile or merit rank) has been entered
   const hasCandidateScore = Boolean(
@@ -169,10 +172,11 @@ export const CutoffSearchPage: React.FC = () => {
     const roundParam = searchParams.get('round');
     const pctParam = searchParams.get('percentile');
     const rankParam = searchParams.get('rank');
+    const tolParam = searchParams.get('rank_tolerance');
     const scoreModeParam = searchParams.get('scoreMode');
 
     const hasAnyParam = Boolean(
-      collegeParam || courseParam || statusParam || typeParam || autoParam || catParam || resParam || genParam || distParam || yearParam || roundParam || pctParam || rankParam
+      collegeParam || courseParam || statusParam || typeParam || autoParam || catParam || resParam || genParam || distParam || yearParam || roundParam || pctParam || rankParam || tolParam
     );
 
     if (hasAnyParam) {
@@ -196,6 +200,9 @@ export const CutoffSearchPage: React.FC = () => {
       if (yearParam !== null) setCapYear(yearParam);
       if (roundParam !== null) {
         setSelectedCapRounds(roundParam ? roundParam.split(',').map((s) => s.trim()).filter(Boolean) : []);
+      }
+      if (tolParam !== null) {
+        setRankTolerance(tolParam);
       }
       if (rankParam) {
         setStudentRank(rankParam);
@@ -520,11 +527,12 @@ export const CutoffSearchPage: React.FC = () => {
     city_district: computedDistrictQuery,
     max_percentile: scoreMode === 'percentile' && studentPercentile ? Number(studentPercentile) : undefined,
     min_merit: scoreMode === 'rank' && studentRank ? Number(studentRank) : undefined,
+    rank_tolerance: scoreMode === 'rank' && rankTolerance ? Number(rankTolerance) : undefined,
     is_deleted: false as const,
     quota_group: activePanel,
     college_type: autonomyStatus || undefined,
     funding_type: collegeType || undefined,
-  }), [capYear, selectedColleges, selectedCourses, computedCategoryQuery, gender, computedDistrictQuery, scoreMode, studentPercentile, studentRank, activePanel, collegeType, autonomyStatus, hasCandidateScore]);
+  }), [capYear, selectedColleges, selectedCourses, computedCategoryQuery, gender, computedDistrictQuery, scoreMode, studentPercentile, studentRank, rankTolerance, activePanel, collegeType, autonomyStatus, hasCandidateScore]);
 
   // Fetch Round 1
   const { data: round1Data, isLoading: r1Loading, isError: r1Error, error: r1Err, refetch: r1Refetch } = useQuery({
@@ -833,11 +841,12 @@ export const CutoffSearchPage: React.FC = () => {
         );
       } else if (scoreMode === 'rank') {
         const studentRankNum = studentRank ? Number(studentRank) : null;
+        const toleranceNum = rankTolerance ? Number(rankTolerance) : 0;
         return (
           studentRankNum !== null &&
           roundData.meritNumber !== undefined &&
           roundData.meritNumber !== null &&
-          roundData.meritNumber >= studentRankNum
+          roundData.meritNumber >= Math.max(1, studentRankNum - toleranceNum)
         );
       }
       return false;
@@ -920,6 +929,7 @@ export const CutoffSearchPage: React.FC = () => {
     scoreMode,
     studentPercentile,
     studentRank,
+    rankTolerance,
   ]);
 
   // Filter grouped rows by quick search input
@@ -973,6 +983,7 @@ export const CutoffSearchPage: React.FC = () => {
       round: selectedCapRounds.join(','),
       percentile: scoreMode === 'percentile' && studentPercentile ? studentPercentile : undefined,
       rank: scoreMode === 'rank' && studentRank ? studentRank : undefined,
+      rankTolerance: scoreMode === 'rank' && rankTolerance ? rankTolerance : undefined,
       scoreMode,
     };
 
@@ -998,13 +1009,16 @@ export const CutoffSearchPage: React.FC = () => {
         p.set('percentile', studentPercentile);
         p.set('scoreMode', 'percentile');
         p.delete('rank');
+        p.delete('rank_tolerance');
       } else if (scoreMode === 'rank' && studentRank) {
         p.set('rank', studentRank);
         p.set('scoreMode', 'rank');
+        if (rankTolerance) p.set('rank_tolerance', rankTolerance); else p.delete('rank_tolerance');
         p.delete('percentile');
       } else {
         p.delete('percentile');
         p.delete('rank');
+        p.delete('rank_tolerance');
         p.delete('scoreMode');
       }
       return p;
@@ -1028,6 +1042,7 @@ export const CutoffSearchPage: React.FC = () => {
     setSelectedCapRounds([]);
     setStudentPercentile('');
     setStudentRank('');
+    setRankTolerance('');
     setScoreMode('percentile');
     setTableFilter('');
     setSortBy('percentile_desc');
@@ -1080,10 +1095,14 @@ export const CutoffSearchPage: React.FC = () => {
       chips.push({ id: 'percentile', label: 'Score', value: `≤ ${Number(studentPercentile).toFixed(4)}%` });
     }
     if (scoreMode === 'rank' && studentRank) {
-      chips.push({ id: 'rank', label: 'Merit Rank', value: `≤ #${Number(studentRank).toLocaleString()} (Closing ≥ Candidate)` });
+      const tolText = rankTolerance && Number(rankTolerance) > 0 ? ` (±${Number(rankTolerance).toLocaleString()} buffer)` : '';
+      chips.push({ id: 'rank', label: 'Merit Rank', value: `≤ #${Number(studentRank).toLocaleString()}${tolText}` });
+      if (rankTolerance && Number(rankTolerance) > 0) {
+        chips.push({ id: 'rank_tolerance', label: 'Rank Tolerance', value: `+${Number(rankTolerance).toLocaleString()} Ranks` });
+      }
     }
     return chips;
-  }, [selectedColleges, selectedCourses, selectedStatuses, collegeType, autonomyStatus, casteCategory, reservationType, gender, selectedDistricts, districtOptions, selectedCapRounds, scoreMode, studentPercentile, studentRank, activePanel]);
+  }, [selectedColleges, selectedCourses, selectedStatuses, collegeType, autonomyStatus, casteCategory, reservationType, gender, selectedDistricts, districtOptions, selectedCapRounds, scoreMode, studentPercentile, studentRank, rankTolerance, activePanel]);
 
   const handleRemoveChip = (id: string) => {
     if (id.startsWith('college:')) {
@@ -1135,6 +1154,9 @@ export const CutoffSearchPage: React.FC = () => {
         break;
       case 'rank':
         setStudentRank('');
+        break;
+      case 'rank_tolerance':
+        setRankTolerance('');
         break;
     }
   };
@@ -1210,14 +1232,17 @@ export const CutoffSearchPage: React.FC = () => {
 
     const studentScore = scoreMode === 'percentile' && studentPercentile ? Number(studentPercentile) : null;
     const studentRankNum = scoreMode === 'rank' && studentRank ? Number(studentRank) : null;
+    const toleranceNum = rankTolerance ? Number(rankTolerance) : 0;
 
     const isEligibleByPercentile = studentScore !== null && roundData.percentile !== undefined && roundData.percentile <= studentScore;
     const percentileMargin = isEligibleByPercentile && roundData.percentile !== undefined ? (studentScore - roundData.percentile).toFixed(2) : null;
 
-    const isEligibleByRank = studentRankNum !== null && roundData.meritNumber !== undefined && roundData.meritNumber >= studentRankNum;
-    const rankMargin = isEligibleByRank && roundData.meritNumber !== undefined ? (roundData.meritNumber - studentRankNum) : null;
+    const isStrictlyEligibleByRank = studentRankNum !== null && roundData.meritNumber !== undefined && roundData.meritNumber >= studentRankNum;
+    const isWithinToleranceByRank = !isStrictlyEligibleByRank && studentRankNum !== null && roundData.meritNumber !== undefined && roundData.meritNumber >= Math.max(1, studentRankNum - toleranceNum);
+    const rankMargin = isStrictlyEligibleByRank && roundData.meritNumber !== undefined ? (roundData.meritNumber - studentRankNum) : null;
+    const rankToleranceDelta = isWithinToleranceByRank && roundData.meritNumber !== undefined ? (studentRankNum - roundData.meritNumber) : null;
 
-    const isEligible = isEligibleByPercentile || isEligibleByRank;
+    const isEligible = isEligibleByPercentile || isStrictlyEligibleByRank || isWithinToleranceByRank;
 
     // Check if this round is selected in the round filter
     // If no specific rounds are selected (selectedCapRounds is empty), all rounds are active
@@ -1230,7 +1255,7 @@ export const CutoffSearchPage: React.FC = () => {
       return (
         <div className="flex flex-col items-end">
           <div className="flex items-center gap-1">
-            {shouldHighlight && (
+            {shouldHighlight && isStrictlyEligibleByRank && (
               <span
                 className="inline-flex items-center text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1 rounded ring-1 ring-emerald-200"
                 title={`Eligible in Round ${roundNum}: Closing rank (#${roundData.meritNumber?.toLocaleString()}) accepted candidate's rank (#${studentRankNum?.toLocaleString()}) with ${rankMargin?.toLocaleString()} rank buffer`}
@@ -1238,10 +1263,20 @@ export const CutoffSearchPage: React.FC = () => {
                 ✓
               </span>
             )}
+            {shouldHighlight && isWithinToleranceByRank && (
+              <span
+                className="inline-flex items-center text-[10px] font-bold text-amber-700 bg-amber-50 px-1 rounded ring-1 ring-amber-300"
+                title={`Aspirational in Round ${roundNum}: Closing rank (#${roundData.meritNumber?.toLocaleString()}) is within tolerance (-${rankToleranceDelta?.toLocaleString()} ranks of candidate)`}
+              >
+                ⚡ Reach
+              </span>
+            )}
             <span
               className={`font-mono text-sm ${
-                shouldHighlight
+                shouldHighlight && isStrictlyEligibleByRank
                   ? 'text-emerald-700 font-bold bg-emerald-50/70 px-1 rounded'
+                  : shouldHighlight && isWithinToleranceByRank
+                  ? 'text-amber-800 font-bold bg-amber-50/70 px-1 rounded'
                   : 'text-gray-900 font-semibold'
               }`}
             >
@@ -1249,7 +1284,13 @@ export const CutoffSearchPage: React.FC = () => {
             </span>
           </div>
           {roundData.percentile !== undefined && (
-            <span className={`text-[11px] font-mono ${shouldHighlight ? 'text-emerald-600 font-medium' : 'text-gray-500'}`}>
+            <span className={`text-[11px] font-mono ${
+              shouldHighlight && isStrictlyEligibleByRank
+                ? 'text-emerald-600 font-medium'
+                : shouldHighlight && isWithinToleranceByRank
+                ? 'text-amber-700 font-medium'
+                : 'text-gray-500'
+            }`}>
               {roundData.percentile.toFixed(4)}%
             </span>
           )}
@@ -1538,13 +1579,61 @@ export const CutoffSearchPage: React.FC = () => {
                   </div>
                 )}
 
+                {scoreMode === 'rank' && (
+                  <div className="mt-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                        <span>Rank Tolerance Buffer</span>
+                        <span className="text-[10px] font-normal text-slate-500">(±x ranks)</span>
+                      </label>
+                      <span className="text-[10px] font-semibold text-primary-600 bg-primary-50 px-1.5 py-0.5 rounded border border-primary-200">
+                        Shows Aspirational Colleges
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="100"
+                        placeholder="e.g. 1000"
+                        value={rankTolerance}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '' || Number(val) >= 0) setRankTolerance(val);
+                        }}
+                        className="w-28 px-2 py-1 text-xs border border-gray-300 rounded font-mono focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                      />
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {['0', '500', '1000', '2500', '5000'].map((preset) => {
+                          const isSelected = (preset === '0' && (!rankTolerance || rankTolerance === '0')) || rankTolerance === preset;
+                          return (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setRankTolerance(preset === '0' ? '' : preset)}
+                              className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
+                                isSelected
+                                  ? 'bg-primary-600 text-white font-bold shadow-2xs'
+                                  : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
+                              }`}
+                            >
+                              {preset === '0' ? 'Exact (0)' : `+${Number(preset).toLocaleString()}`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <p className="mt-1 text-xs text-gray-500">
                   {scoreMode === 'percentile'
                     ? (studentPercentile
                         ? `Shows colleges with cutoff ≤ ${Number(studentPercentile).toFixed(4)}%`
                         : 'Enter percentile (0–100) to see recommended colleges')
                     : (studentRank
-                        ? `Shows colleges with closing rank ≥ #${Number(studentRank).toLocaleString()} (candidate qualifies)`
+                        ? `Shows colleges with closing rank ≥ #${Math.max(1, Number(studentRank) - (Number(rankTolerance) || 0)).toLocaleString()} ${rankTolerance && Number(rankTolerance) > 0 ? `(including +${Number(rankTolerance).toLocaleString()} tolerance)` : ''}`
                         : 'Enter merit rank to see colleges where you qualify')}
                 </p>
               </div>

@@ -179,6 +179,7 @@ export const MedicalSearchPage: React.FC = () => {
   const quotaParam = searchParams.get('quota') || '';
   const genderParam = searchParams.get('gender') || '';
   const rankParam = searchParams.get('student_rank') || '';
+  const rankToleranceParam = searchParams.get('rank_tolerance') || '';
   const scoreParam = searchParams.get('student_score') || '';
   const sortParam = searchParams.get('sort_by') || 'rank_asc';
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
@@ -186,10 +187,15 @@ export const MedicalSearchPage: React.FC = () => {
 
   // Debounced local state for NEET AIR input to prevent keystroke flooding
   const [localRankInput, setLocalRankInput] = useState<string>(rankParam);
+  const [localToleranceInput, setLocalToleranceInput] = useState<string>(rankToleranceParam);
 
   useEffect(() => {
     setLocalRankInput(rankParam);
   }, [rankParam]);
+
+  useEffect(() => {
+    setLocalToleranceInput(rankToleranceParam);
+  }, [rankToleranceParam]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -200,6 +206,16 @@ export const MedicalSearchPage: React.FC = () => {
     }, 400);
     return () => clearTimeout(handler);
   }, [localRankInput, rankParam]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      const trimmed = localToleranceInput.trim();
+      if (trimmed !== rankToleranceParam) {
+        updateQueryParam('rank_tolerance', trimmed ? trimmed : null);
+      }
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [localToleranceInput, rankToleranceParam]);
 
   // Multi-select parsed arrays
   const selectedColleges = useMemo(
@@ -238,13 +254,14 @@ export const MedicalSearchPage: React.FC = () => {
       quota: quotaParam || undefined,
       gender: genderParam || undefined,
       student_rank: rankParam ? parseInt(rankParam, 10) : undefined,
+      rank_tolerance: rankToleranceParam ? parseInt(rankToleranceParam, 10) : undefined,
       page: pageParam,
       page_size: pageSizeParam,
       sort_by: sortParam,
     };
   }, [
     counsellingParam, yearParam, roundParam, collegeParam, courseParam, collegeTypeParam,
-    stateParam, cityParam, categoryParam, quotaParam, genderParam, rankParam,
+    stateParam, cityParam, categoryParam, quotaParam, genderParam, rankParam, rankToleranceParam,
     pageParam, pageSizeParam, sortParam
   ]);
 
@@ -286,6 +303,7 @@ export const MedicalSearchPage: React.FC = () => {
 
   const clearAllFilters = () => {
     setLocalRankInput('');
+    setLocalToleranceInput('');
     const nextParams = new URLSearchParams();
     nextParams.set('counselling', counsellingParam);
     nextParams.set('year', counsellingParam === 'central' ? '2026-2027' : '2024-2025');
@@ -404,11 +422,18 @@ export const MedicalSearchPage: React.FC = () => {
         label: 'Eligible for AIR',
         value: `#${formatNumber(parseInt(rankParam, 10))}`,
       });
+      if (rankToleranceParam && parseInt(rankToleranceParam, 10) > 0) {
+        filters.push({
+          id: 'rank_tolerance',
+          label: 'AIR Tolerance',
+          value: `+${formatNumber(parseInt(rankToleranceParam, 10))} ranks`,
+        });
+      }
     }
     return filters;
   }, [
     yearParam, roundParam, stateParam, cityParam, selectedCourses, selectedColleges,
-    collegeTypeParam, categoryParam, quotaParam, genderParam, rankParam
+    collegeTypeParam, categoryParam, quotaParam, genderParam, rankParam, rankToleranceParam
   ]);
 
   const handleRemoveFilter = (filterId: string) => {
@@ -423,6 +448,10 @@ export const MedicalSearchPage: React.FC = () => {
     else if (filterId === 'rank') {
       setLocalRankInput('');
       updateQueryParam('student_rank', null);
+    }
+    else if (filterId === 'rank_tolerance') {
+      setLocalToleranceInput('');
+      updateQueryParam('rank_tolerance', null);
     }
     else if (filterId === 'score') updateQueryParam('student_score', null);
     else if (filterId.startsWith('course_')) {
@@ -1104,8 +1133,42 @@ export const MedicalSearchPage: React.FC = () => {
                   placeholder="e.g. 15400"
                   value={localRankInput}
                   onChange={(e) => setLocalRankInput(e.target.value)}
-                  className="w-40 bg-white border border-emerald-300 rounded-lg px-3 py-1.5 text-sm text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500 shadow-xs placeholder-slate-400 font-medium"
+                  className="w-32 bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-sm text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500 shadow-xs placeholder-slate-400 font-medium"
                 />
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">Tolerance:</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="500"
+                  placeholder="±0"
+                  value={localToleranceInput}
+                  onChange={(e) => setLocalToleranceInput(e.target.value)}
+                  className="w-20 bg-white border border-emerald-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500 shadow-xs font-medium"
+                />
+              </div>
+
+              <div className="flex items-center gap-1">
+                {['0', '1000', '2500', '5000'].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => {
+                      const val = preset === '0' ? '' : preset;
+                      setLocalToleranceInput(val);
+                      updateQueryParam('rank_tolerance', val || null);
+                    }}
+                    className={`px-1.5 py-1 text-[10px] rounded transition-colors font-medium ${
+                      (preset === '0' && (!rankToleranceParam || rankToleranceParam === '0')) || rankToleranceParam === preset
+                        ? 'bg-emerald-700 text-white font-bold'
+                        : 'bg-emerald-100/70 text-emerald-800 hover:bg-emerald-200'
+                    }`}
+                  >
+                    {preset === '0' ? 'Exact' : `+${Number(preset).toLocaleString()}`}
+                  </button>
+                ))}
               </div>
 
               {rankParam && (
@@ -1114,11 +1177,13 @@ export const MedicalSearchPage: React.FC = () => {
                   size="sm"
                   onClick={() => {
                     setLocalRankInput('');
+                    setLocalToleranceInput('');
                     updateQueryParam('student_rank', null);
+                    updateQueryParam('rank_tolerance', null);
                   }}
                   className="text-xs text-slate-500 hover:text-slate-800"
                 >
-                  Clear Rank
+                  Clear
                 </Button>
               )}
             </div>
@@ -1148,8 +1213,42 @@ export const MedicalSearchPage: React.FC = () => {
                   placeholder="e.g. 24500"
                   value={localRankInput}
                   onChange={(e) => setLocalRankInput(e.target.value)}
-                  className="w-40 bg-white border border-teal-300 rounded-lg px-3 py-1.5 text-sm text-slate-900 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-500 shadow-xs placeholder-slate-400 font-medium"
+                  className="w-32 bg-white border border-teal-300 rounded-lg px-2.5 py-1.5 text-sm text-slate-900 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-500 shadow-xs placeholder-slate-400 font-medium"
                 />
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">Tolerance:</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="500"
+                  placeholder="±0"
+                  value={localToleranceInput}
+                  onChange={(e) => setLocalToleranceInput(e.target.value)}
+                  className="w-20 bg-white border border-teal-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-500 shadow-xs font-medium"
+                />
+              </div>
+
+              <div className="flex items-center gap-1">
+                {['0', '1000', '2500', '5000'].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => {
+                      const val = preset === '0' ? '' : preset;
+                      setLocalToleranceInput(val);
+                      updateQueryParam('rank_tolerance', val || null);
+                    }}
+                    className={`px-1.5 py-1 text-[10px] rounded transition-colors font-medium ${
+                      (preset === '0' && (!rankToleranceParam || rankToleranceParam === '0')) || rankToleranceParam === preset
+                        ? 'bg-teal-700 text-white font-bold'
+                        : 'bg-teal-100/70 text-teal-800 hover:bg-teal-200'
+                    }`}
+                  >
+                    {preset === '0' ? 'Exact' : `+${Number(preset).toLocaleString()}`}
+                  </button>
+                ))}
               </div>
 
               {rankParam && (
@@ -1158,11 +1257,13 @@ export const MedicalSearchPage: React.FC = () => {
                   size="sm"
                   onClick={() => {
                     setLocalRankInput('');
+                    setLocalToleranceInput('');
                     updateQueryParam('student_rank', null);
+                    updateQueryParam('rank_tolerance', null);
                   }}
                   className="text-xs text-slate-500 hover:text-slate-800"
                 >
-                  Clear Rank
+                  Clear
                 </Button>
               )}
             </div>
@@ -1841,6 +1942,11 @@ export const MedicalSearchPage: React.FC = () => {
                                   Likely
                                 </span>
                               )}
+                              {row.chance === 'Within Tolerance' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                  ⚡ Within Tolerance (Reach)
+                                </span>
+                              )}
                               {row.chance === 'Borderline' && (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
                                   Borderline
@@ -1972,10 +2078,11 @@ export const MedicalSearchPage: React.FC = () => {
                         <div className={`text-center py-1 rounded-md text-xs font-semibold ${
                           row.chance === 'High' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
                           row.chance === 'Medium' ? 'bg-teal-100 text-teal-800 border border-teal-200' :
+                          row.chance === 'Within Tolerance' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
                           row.chance === 'Borderline' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
                           'bg-rose-100 text-rose-800 border border-rose-200'
                         }`}>
-                          Chance: {row.chance}
+                          Chance: {row.chance === 'Within Tolerance' ? '⚡ Within Tolerance (Reach)' : row.chance}
                         </div>
                       </div>
                     )}

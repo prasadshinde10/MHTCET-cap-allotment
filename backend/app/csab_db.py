@@ -184,6 +184,7 @@ def query_csab_cutoffs(
     gender: Optional[str] = None,
     academic_year: Optional[int] = None,
     max_rank: Optional[int] = None,
+    rank_tolerance: Optional[int] = 0,
     page: int = 1,
     page_size: int = 100,
     sort_by: str = "rank_asc",
@@ -341,9 +342,10 @@ def query_csab_cutoffs(
                 params.append(gender)
 
         if max_rank is not None and max_rank > 0:
-            # Candidate CRL rank <= closing_rank (candidate is eligible)
+            # Candidate CRL rank <= closing_rank + rank_tolerance (closing_rank >= max_rank - rank_tolerance)
+            effective_rank = max(1, max_rank - (rank_tolerance or 0))
             where_clauses.append("cr.closing_rank >= ?")
-            params.append(max_rank)
+            params.append(effective_rank)
 
         where_sql = " AND ".join(where_clauses)
 

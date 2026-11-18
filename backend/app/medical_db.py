@@ -592,6 +592,7 @@ def query_medical_cutoffs(
     gender: Optional[str] = None,
     student_rank: Optional[int] = None,
     student_score: Optional[int] = None,
+    rank_tolerance: Optional[int] = 0,
     min_rank: Optional[int] = None,
     max_rank: Optional[int] = None,
     min_score: Optional[int] = None,
@@ -831,14 +832,15 @@ def query_medical_cutoffs(
             where_clauses.append("c.closing_score <= ?")
             sqlite_params.append(max_score)
 
-    # Student NEET AIR filter (filters colleges where student is eligible: closing_rank >= student_rank)
+    # Student NEET AIR filter (filters colleges where student is eligible: closing_rank >= student_rank - rank_tolerance)
     if student_rank is not None:
+        effective_rank = max(1, student_rank - (rank_tolerance or 0))
         if is_pg:
-            where_clauses.append("(c.closing_rank IS NOT NULL AND c.closing_rank >= :student_rank)")
-            params["student_rank"] = student_rank
+            where_clauses.append("(c.closing_rank IS NOT NULL AND c.closing_rank >= :effective_rank)")
+            params["effective_rank"] = effective_rank
         else:
             where_clauses.append("(c.closing_rank IS NOT NULL AND c.closing_rank >= ?)")
-            sqlite_params.append(student_rank)
+            sqlite_params.append(effective_rank)
 
     # Student NEET Score filter
     if student_score is not None:
@@ -939,6 +941,8 @@ def query_medical_cutoffs(
                 chance = "High"
             elif student_rank <= c_rank:
                 chance = "Medium"
+            elif rank_tolerance and c_rank >= (student_rank - rank_tolerance):
+                chance = "Within Tolerance"
             elif student_rank <= c_rank * 1.10:
                 chance = "Borderline"
             else:

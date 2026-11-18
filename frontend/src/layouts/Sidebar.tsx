@@ -1,11 +1,21 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Search, History, LogOut, GraduationCap, ShieldCheck, UploadCloud, Award, School, Landmark, Stethoscope, Building } from 'lucide-react';
+import { Search, History, LogOut, GraduationCap, ShieldCheck, UploadCloud, Award, School, Landmark, Stethoscope, Building, Settings as SettingsIcon, Sparkles } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../utils/utils';
+import { useQuery } from '@tanstack/react-query';
+import { checkForUpdates } from '../api/settings';
+import { UpdateModal } from '../components/UpdateModal';
 
 export const Sidebar: React.FC = () => {
   const { user, logout } = useAuth();
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+
+  const { data: updateData } = useQuery({
+    queryKey: ['softwareUpdateCheck'],
+    queryFn: () => checkForUpdates(false),
+    staleTime: 1000 * 60 * 15,
+  });
 
   const navItems = [
     {
@@ -60,6 +70,11 @@ export const Sidebar: React.FC = () => {
       name: 'Search History',
       to: '/history',
       icon: History,
+    },
+    {
+      name: 'Settings & Updates',
+      to: '/settings',
+      icon: SettingsIcon,
     },
   ];
 
@@ -118,6 +133,31 @@ export const Sidebar: React.FC = () => {
 
       {/* User Info & Logout Footer */}
       <div className="flex-shrink-0 border-t border-slate-800 p-4 bg-slate-950/60">
+        {/* Update Notification Pill in Sidebar */}
+        {updateData?.update_available && (
+          <button
+            onClick={() => setShowUpdateModal(true)}
+            className="w-full mb-3 px-3 py-2 bg-gradient-to-r from-amber-500/20 to-primary-500/20 hover:from-amber-500/30 hover:to-primary-500/30 border border-amber-400/40 rounded-lg text-left flex items-center justify-between transition-all group"
+          >
+            <div className="flex items-center gap-2">
+              <span className="p-1 bg-amber-400/20 rounded text-amber-300">
+                <Sparkles className="w-3.5 h-3.5" />
+              </span>
+              <div>
+                <div className="text-[11px] font-bold text-amber-200">
+                  Update {updateData.latest_version} Available
+                </div>
+                <div className="text-[9px] text-slate-400">
+                  Click to view & download
+                </div>
+              </div>
+            </div>
+            <span className="text-[10px] font-semibold text-amber-400 group-hover:translate-x-0.5 transition-transform">
+              →
+            </span>
+          </button>
+        )}
+
         <div className="flex items-center justify-between mb-3 px-1">
           <div className="flex items-center gap-2 truncate">
             <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-primary-400 flex-shrink-0">
@@ -142,6 +182,12 @@ export const Sidebar: React.FC = () => {
           Logout
         </button>
       </div>
+
+      <UpdateModal
+        isOpen={showUpdateModal}
+        onClose={() => setShowUpdateModal(false)}
+        updateData={updateData || null}
+      />
     </aside>
   );
 };

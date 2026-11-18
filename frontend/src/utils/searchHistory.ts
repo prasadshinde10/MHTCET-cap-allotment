@@ -12,6 +12,7 @@ export interface SearchHistoryFilters {
   round: string;
   percentile?: string;
   rank?: string;
+  rankTolerance?: string;
   scoreMode?: 'percentile' | 'rank';
 }
 

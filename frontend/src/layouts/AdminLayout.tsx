@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { useAuth } from '../hooks/useAuth';
 import { Spinner } from '../components/ui/Spinner';
+import { UpdateNotificationBanner } from '../components/UpdateNotificationBanner';
 
 export const AdminLayout: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -24,6 +25,7 @@ export const AdminLayout: React.FC = () => {
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <Sidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
+        <UpdateNotificationBanner />
         <Topbar />
         <main className="flex-1 overflow-y-auto p-6">
           <Outlet />

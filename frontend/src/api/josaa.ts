@@ -78,6 +78,7 @@ export interface JosaaCutoffParams {
   gender?: string;
   academic_year?: number;
   max_rank?: number;
+  rank_tolerance?: number;
   page?: number;
   page_size?: number;
   sort_by?: string;

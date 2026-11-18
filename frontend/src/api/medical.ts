@@ -40,7 +40,7 @@ export interface MedicalCutoffItem {
   closing_score?: number | null;
   allotted_seats: number;
   exam_name: string;
-  chance?: 'High' | 'Medium' | 'Borderline' | 'Low' | null;
+  chance?: 'High' | 'Medium' | 'Within Tolerance' | 'Borderline' | 'Low' | null;
   college_id: number;
   college_code: string;
   college_name: string;
@@ -77,6 +77,7 @@ export interface MedicalCutoffParams {
   gender?: string;
   student_rank?: number;
   student_score?: number;
+  rank_tolerance?: number;
   min_rank?: number;
   max_rank?: number;
   min_score?: number;
@@ -139,6 +140,7 @@ export const getMedicalExportUrl = (params: MedicalCutoffParams): string => {
   if (params.gender) searchParams.set('gender', params.gender);
   if (params.student_rank) searchParams.set('student_rank', params.student_rank.toString());
   if (params.student_score) searchParams.set('student_score', params.student_score.toString());
+  if (params.rank_tolerance) searchParams.set('rank_tolerance', params.rank_tolerance.toString());
   if (params.sort_by) searchParams.set('sort_by', params.sort_by);
 
   const baseUrl = apiClient.defaults.baseURL || '/api';

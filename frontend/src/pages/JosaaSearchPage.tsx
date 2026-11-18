@@ -141,6 +141,7 @@ export const JosaaSearchPage: React.FC = () => {
   const [gender, setGender] = useState<string>(searchParams.get('gender') || '');
   const [academicYear, setAcademicYear] = useState<string>(searchParams.get('year') || '2026');
   const [candidateRank, setCandidateRank] = useState<string>(searchParams.get('rank') || '');
+  const [rankTolerance, setRankTolerance] = useState<string>(searchParams.get('rank_tolerance') || '');
 
   // UI state
   const [hasSearched, setHasSearched] = useState(true);
@@ -161,8 +162,9 @@ export const JosaaSearchPage: React.FC = () => {
     const genParam = searchParams.get('gender');
     const yrParam = searchParams.get('year');
     const rkParam = searchParams.get('rank');
+    const tolParam = searchParams.get('rank_tolerance');
 
-    const hasAny = Boolean(roundParam || typeParam || instParam || stateParam || progParam || catParam || quotaParam || genParam || yrParam || rkParam);
+    const hasAny = Boolean(roundParam || typeParam || instParam || stateParam || progParam || catParam || quotaParam || genParam || yrParam || rkParam || tolParam);
     if (hasAny) {
       if (roundParam !== null) setSelectedRounds(parseMultiParam(roundParam));
       if (typeParam !== null) setInstituteType(typeParam);
@@ -174,6 +176,7 @@ export const JosaaSearchPage: React.FC = () => {
       if (genParam !== null) setGender(genParam);
       if (yrParam !== null) setAcademicYear(yrParam);
       if (rkParam !== null) setCandidateRank(rkParam);
+      if (tolParam !== null) setRankTolerance(tolParam);
       setHasSearched(true);
     }
   }, [searchParams]);
@@ -334,10 +337,11 @@ export const JosaaSearchPage: React.FC = () => {
     gender: gender || undefined,
     academic_year: academicYear ? Number(academicYear) : undefined,
     max_rank: candidateRank ? Number(candidateRank) : undefined,
+    rank_tolerance: rankTolerance ? Number(rankTolerance) : undefined,
     page,
     page_size: pageSize,
     sort_by: sortBy,
-  }), [selectedRounds, instituteType, selectedInstitutes, selectedStates, selectedPrograms, category, quota, gender, academicYear, candidateRank, page, pageSize, sortBy]);
+  }), [selectedRounds, instituteType, selectedInstitutes, selectedStates, selectedPrograms, category, quota, gender, academicYear, candidateRank, rankTolerance, page, pageSize, sortBy]);
 
   const { data: cutoffsData, isLoading: isCutoffsLoading, isError, error, refetch } = useQuery({
     queryKey: ['josaaCutoffs', queryParams],
@@ -361,6 +365,7 @@ export const JosaaSearchPage: React.FC = () => {
     if (gender) params.set('gender', gender);
     if (academicYear) params.set('year', academicYear);
     if (candidateRank) params.set('rank', candidateRank);
+    if (rankTolerance) params.set('rank_tolerance', rankTolerance);
 
     setSearchParams(params);
   };
@@ -376,6 +381,7 @@ export const JosaaSearchPage: React.FC = () => {
     setQuota('');
     setGender('');
     setCandidateRank('');
+    setRankTolerance('');
     setHasSearched(true);
     setPage(1);
     setSearchParams(new URLSearchParams());
@@ -418,8 +424,11 @@ export const JosaaSearchPage: React.FC = () => {
     if (quota) chips.push({ id: 'quota', label: 'Quota', value: quota });
     if (gender) chips.push({ id: 'gender', label: 'Pool', value: gender });
     if (candidateRank) chips.push({ id: 'rank', label: 'JEE Rank ≤', value: `#${candidateRank}` });
+    if (candidateRank && rankTolerance && Number(rankTolerance) > 0) {
+      chips.push({ id: 'tolerance', label: 'Tolerance Buffer', value: `+${Number(rankTolerance).toLocaleString()} ranks` });
+    }
     return chips;
-  }, [selectedRounds, instituteType, selectedInstitutes, selectedStates, selectedPrograms, category, quota, gender, candidateRank]);
+  }, [selectedRounds, instituteType, selectedInstitutes, selectedStates, selectedPrograms, category, quota, gender, candidateRank, rankTolerance]);
 
   const removeFilterChip = (id: string) => {
     if (id.startsWith('round:')) {
@@ -447,7 +456,11 @@ export const JosaaSearchPage: React.FC = () => {
     if (id === 'category') setCategory('');
     if (id === 'quota') setQuota('');
     if (id === 'gender') setGender('');
-    if (id === 'rank') setCandidateRank('');
+    if (id === 'rank') {
+      setCandidateRank('');
+      setRankTolerance('');
+    }
+    if (id === 'tolerance') setRankTolerance('');
   };
 
   // Institute Type styling helper
@@ -1021,13 +1034,19 @@ export const JosaaSearchPage: React.FC = () => {
                   min="1"
                   placeholder="e.g. 2500"
                   value={candidateRank}
-                  onChange={(e) => setCandidateRank(e.target.value)}
+                  onChange={(e) => {
+                    setCandidateRank(e.target.value);
+                    if (!e.target.value) setRankTolerance('');
+                  }}
                   className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 />
                 {candidateRank && (
                   <button
                     type="button"
-                    onClick={() => setCandidateRank('')}
+                    onClick={() => {
+                      setCandidateRank('');
+                      setRankTolerance('');
+                    }}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
                   >
                     Clear
@@ -1035,8 +1054,53 @@ export const JosaaSearchPage: React.FC = () => {
                 )}
               </div>
               <p className="mt-1 text-[11px] text-gray-500">
-                Filters to programs where your rank ≤ Closing Rank (eligible)
+                Filters to programs where your rank ≤ Closing Rank
               </p>
+
+              {candidateRank && (
+                <div className="mt-2.5 p-2 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                      <span>Rank Tolerance Buffer</span>
+                      <span className="text-[10px] font-normal text-slate-500">(±x ranks)</span>
+                    </label>
+                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                      Reach / Aspirational
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <input
+                      type="number"
+                      min="0"
+                      step="100"
+                      placeholder="e.g. 1000"
+                      value={rankTolerance}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || Number(val) >= 0) setRankTolerance(val);
+                      }}
+                      className="w-24 px-2 py-1 text-xs border border-gray-300 rounded font-mono focus:ring-1 focus:ring-indigo-500 focus:outline-none bg-white"
+                    />
+                    {['0', '500', '1000', '2500', '5000'].map((preset) => {
+                      const isSelected = (preset === '0' && (!rankTolerance || rankTolerance === '0')) || rankTolerance === preset;
+                      return (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setRankTolerance(preset === '0' ? '' : preset)}
+                          className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors ${
+                            isSelected
+                              ? 'bg-indigo-600 text-white font-bold shadow-2xs'
+                              : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {preset === '0' ? 'Exact' : `+${preset}`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <Select
@@ -1098,8 +1162,13 @@ export const JosaaSearchPage: React.FC = () => {
               </span>
 
               {candidateRankNum !== null && (
-                <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-medium">
-                  Showing programs where Rank ≤ #{candidateRankNum}
+                <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-medium flex items-center gap-1">
+                  <span>Showing programs where Closing Rank ≥ #{Math.max(1, candidateRankNum - (rankTolerance ? Number(rankTolerance) : 0)).toLocaleString()}</span>
+                  {rankTolerance && Number(rankTolerance) > 0 && (
+                    <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.2 rounded border border-amber-300">
+                      +{Number(rankTolerance).toLocaleString()} buffer
+                    </span>
+                  )}
                 </span>
               )}
             </div>
@@ -1212,7 +1281,11 @@ export const JosaaSearchPage: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     {cutoffsData?.items.map((row: JosaaCutoff) => {
-                      const isEligible = candidateRankNum !== null ? candidateRankNum <= row.closing_rank : null;
+                      const toleranceNum = rankTolerance ? parseInt(rankTolerance, 10) : 0;
+                      const isStrictlyEligible = candidateRankNum !== null ? candidateRankNum <= row.closing_rank : null;
+                      const isWithinTolerance = candidateRankNum !== null && !isStrictlyEligible && toleranceNum > 0
+                        ? row.closing_rank >= Math.max(1, candidateRankNum - toleranceNum)
+                        : false;
                       const isHighlyCompetitive = candidateRankNum !== null ? candidateRankNum <= row.opening_rank : null;
 
                       return (
@@ -1302,9 +1375,13 @@ export const JosaaSearchPage: React.FC = () => {
                                 <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
                                   <CheckCircle2 className="w-3 h-3" /> Safe
                                 </span>
-                              ) : isEligible ? (
+                              ) : isStrictlyEligible ? (
                                 <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
                                   In Reach
+                                </span>
+                              ) : isWithinTolerance ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full" title={`Closing rank #${row.closing_rank.toLocaleString()} is within ${toleranceNum.toLocaleString()} tolerance`}>
+                                  ⚡ Reach
                                 </span>
                               ) : (
                                 <span className="text-[11px] font-medium text-slate-400">
@@ -1324,7 +1401,11 @@ export const JosaaSearchPage: React.FC = () => {
             /* Cards View */
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {cutoffsData?.items.map((row: JosaaCutoff) => {
-                const isEligible = candidateRankNum !== null ? candidateRankNum <= row.closing_rank : null;
+                const toleranceNum = rankTolerance ? parseInt(rankTolerance, 10) : 0;
+                const isStrictlyEligible = candidateRankNum !== null ? candidateRankNum <= row.closing_rank : null;
+                const isWithinTolerance = candidateRankNum !== null && !isStrictlyEligible && toleranceNum > 0
+                  ? row.closing_rank >= Math.max(1, candidateRankNum - toleranceNum)
+                  : false;
 
                 return (
                   <div 
@@ -1393,8 +1474,10 @@ export const JosaaSearchPage: React.FC = () => {
                       <div className="flex items-center justify-between mt-2.5 text-[11px] text-slate-500 px-1">
                         <span>Pool: <strong className="text-slate-700">{row.gender.includes('Female') ? 'Female-only' : 'Gender-Neutral'}</strong></span>
                         {candidateRankNum !== null && (
-                          isEligible ? (
+                          isStrictlyEligible ? (
                             <span className="font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Eligible</span>
+                          ) : isWithinTolerance ? (
+                            <span className="font-bold text-amber-800 bg-amber-50 border border-amber-300 px-1.5 py-0.5 rounded">⚡ Within Tolerance</span>
                           ) : (
                             <span className="font-medium text-slate-400">Closed</span>
                           )

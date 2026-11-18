@@ -36,6 +36,7 @@ def get_josaa_cutoffs(
     gender: Optional[str] = Query(None, description="Gender pool (Gender-Neutral or Female-only)"),
     academic_year: Optional[int] = Query(None, description="Year (e.g. 2026)"),
     max_rank: Optional[int] = Query(None, description="Student JEE rank (shows where student rank <= closing_rank)"),
+    rank_tolerance: Optional[int] = Query(0, ge=0, description="Rank tolerance buffer"),
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=1000),
     sort_by: str = Query("rank_asc", description="rank_asc, rank_desc, opening_rank_asc, institute, program"),
@@ -58,6 +59,7 @@ def get_josaa_cutoffs(
             gender=gender,
             academic_year=academic_year,
             max_rank=max_rank,
+            rank_tolerance=rank_tolerance,
             page=page,
             page_size=page_size,
             sort_by=sort_by,
@@ -81,6 +83,7 @@ def export_josaa_cutoffs_csv(
     gender: Optional[str] = Query(None),
     academic_year: Optional[int] = Query(None),
     max_rank: Optional[int] = Query(None),
+    rank_tolerance: Optional[int] = Query(0, ge=0),
     sort_by: str = Query("rank_asc"),
 ):
     """
@@ -101,6 +104,7 @@ def export_josaa_cutoffs_csv(
             gender=gender,
             academic_year=academic_year,
             max_rank=max_rank,
+            rank_tolerance=rank_tolerance,
             page=1,
             page_size=10000,
             sort_by=sort_by,
