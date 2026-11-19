@@ -124,8 +124,45 @@ if settings.APP_ENV == "production":
         allowed_hosts=["*"],
     )
 
+from fastapi import HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import sys
+
 # Mount health at root level (no auth required)
 app.include_router(health_router, prefix="/health", tags=["health"])
 
 # Mount all API routes under /api
 app.include_router(api_router, prefix="/api")
+
+
+# --- Production / Desktop Standalone Frontend Serving ---
+def find_frontend_dist() -> str | None:
+    candidates = [
+        os.path.join(getattr(sys, "_MEIPASS", ""), "frontend", "dist"),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")),
+        os.path.abspath(os.path.join(os.getcwd(), "frontend", "dist")),
+        os.path.abspath(os.path.join(os.getcwd(), "dist")),
+    ]
+    for p in candidates:
+        if p and os.path.exists(p) and os.path.isdir(p) and os.path.exists(os.path.join(p, "index.html")):
+            return p
+    return None
+
+
+frontend_dist = find_frontend_dist()
+if frontend_dist:
+    logger.info(f"Serving built frontend from: {frontend_dist}")
+    assets_dir = os.path.join(frontend_dist, "assets")
+    if os.path.exists(assets_dir) and os.path.isdir(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="static_assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa_frontend(full_path: str):
+        if full_path.startswith("api/") or full_path == "api" or full_path.startswith("health"):
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        target_file = os.path.join(frontend_dist, full_path)
+        if full_path and os.path.isfile(target_file):
+            return FileResponse(target_file)
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
