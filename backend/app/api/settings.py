@@ -65,10 +65,36 @@ def get_settings(
 @router.get("/check-update", response_model=UpdateCheckResponse)
 def check_for_updates(
     force_refresh: bool = Query(False, description="Bypass in-memory cache and re-query GitHub releases"),
-    admin=Depends(get_current_admin)
 ):
     """
     Check if a newer release has been published on GitHub and return download details.
     """
     return check_github_releases(force_refresh=force_refresh)
+
+
+@router.get("/update-progress")
+def get_update_status():
+    """
+    Get live progress and state of the in-place background update.
+    """
+    from app.services.in_place_updater import get_current_progress
+    return get_current_progress()
+
+
+@router.post("/apply-update")
+def trigger_in_place_update():
+    """
+    Download and stage the latest update package in background.
+    """
+    from app.services.in_place_updater import start_in_place_update
+    return start_in_place_update()
+
+
+@router.post("/restart-and-apply")
+def trigger_restart_and_apply():
+    """
+    Launch detached process to apply update and restart the application.
+    """
+    from app.services.in_place_updater import restart_and_apply_update
+    return restart_and_apply_update()
 

@@ -28,3 +28,30 @@ export const checkForUpdates = async (forceRefresh: boolean = false): Promise<Up
   return data;
 };
 
+export interface UpdateProgressResult {
+  status: 'idle' | 'downloading' | 'extracting' | 'ready' | 'failed';
+  progress_percent: number;
+  downloaded_bytes: number;
+  total_bytes: number;
+  downloaded_mb: number;
+  total_mb: number;
+  message: string;
+  target_version: string;
+  error?: string | null;
+}
+
+export const getUpdateProgress = async (): Promise<UpdateProgressResult> => {
+  const { data } = await apiClient.get<UpdateProgressResult>('/settings/update-progress');
+  return data;
+};
+
+export const startInPlaceUpdate = async () => {
+  const { data } = await apiClient.post('/settings/apply-update');
+  return data;
+};
+
+export const restartAndApplyUpdate = async () => {
+  const { data } = await apiClient.post('/settings/restart-and-apply');
+  return data;
+};
+

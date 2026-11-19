@@ -1,6 +1,25 @@
-import React from 'react';
-import { Download, ExternalLink, Sparkles, X, Calendar, FileArchive, CheckCircle2 } from 'lucide-react';
-import { UpdateCheckResult } from '../api/settings';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Download,
+  ExternalLink,
+  Sparkles,
+  X,
+  Calendar,
+  FileArchive,
+  CheckCircle2,
+  RefreshCw,
+  Zap,
+  AlertTriangle,
+  Loader2,
+  RotateCcw,
+} from 'lucide-react';
+import {
+  UpdateCheckResult,
+  UpdateProgressResult,
+  getUpdateProgress,
+  startInPlaceUpdate,
+  restartAndApplyUpdate,
+} from '../api/settings';
 import Button from './ui/Button';
 
 interface UpdateModalProps {
@@ -14,16 +33,89 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
   onClose,
   updateData,
 }) => {
-  if (!isOpen || !updateData) return null;
+  const [progress, setProgress] = useState<UpdateProgressResult | null>(null);
+  const [isUpdating, setIsUpdating] = useState<boolean>(false);
+  const [isRestarting, setIsRestarting] = useState<boolean>(false);
+  const pollingTimerRef = useRef<number | null>(null);
+
+  const stopPolling = () => {
+    if (pollingTimerRef.current !== null) {
+      window.clearInterval(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+    }
+  };
+
+  // Poll update progress
+  const pollStatus = async () => {
+    try {
+      const p = await getUpdateProgress();
+      setProgress(p);
+
+      if (p.status === 'downloading' || p.status === 'extracting') {
+        setIsUpdating(true);
+      } else if (p.status === 'ready') {
+        stopPolling();
+        setIsUpdating(false);
+        setIsRestarting(true);
+        // Automatically trigger restart & apply
+        try {
+          await restartAndApplyUpdate();
+        } catch (e) {
+          console.error('Restart trigger error:', e);
+        }
+      } else if (p.status === 'failed') {
+        stopPolling();
+        setIsUpdating(false);
+      }
+    } catch (e) {
+      console.warn('Error fetching update progress:', e);
+    }
+  };
+
+  // Check progress when modal opens or on mount
+  useEffect(() => {
+    if (isOpen) {
+      pollStatus();
+    } else {
+      stopPolling();
+    }
+    return () => stopPolling();
+  }, [isOpen]);
+
+  const handleStartInPlaceUpdate = async () => {
+    setIsUpdating(true);
+    setIsRestarting(false);
+    try {
+      const res = await startInPlaceUpdate();
+      if (res.progress) {
+        setProgress(res.progress);
+      }
+      stopPolling();
+      pollingTimerRef.current = window.setInterval(pollStatus, 500);
+    } catch (e: any) {
+      setIsUpdating(false);
+      setProgress((prev) => ({
+        status: 'failed',
+        progress_percent: 0,
+        downloaded_bytes: 0,
+        total_bytes: 0,
+        downloaded_mb: 0,
+        total_mb: 0,
+        message: 'Could not connect to update service',
+        target_version: updateData?.latest_version || '',
+        error: e?.response?.data?.detail || e?.message || 'Connection failure',
+      }));
+    }
+  };
 
   const handleDownload = () => {
-    if (updateData.download_url) {
+    if (updateData?.download_url) {
       window.open(updateData.download_url, '_blank', 'noopener,noreferrer');
     }
   };
 
   const handleOpenGitHub = () => {
-    if (updateData.release_url) {
+    if (updateData?.release_url) {
       window.open(updateData.release_url, '_blank', 'noopener,noreferrer');
     }
   };
@@ -41,22 +133,26 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
     }
   };
 
+  if (!isOpen || !updateData) return null;
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div 
+      <div
         className="bg-white rounded-2xl shadow-2xl max-w-xl w-full border border-slate-100 overflow-hidden transform transition-all animate-in fade-in zoom-in-95 duration-200"
         role="dialog"
         aria-modal="true"
       >
         {/* Modal Header */}
         <div className="bg-gradient-to-r from-primary-600 via-primary-700 to-indigo-800 p-6 text-white relative">
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-full transition-colors"
-            title="Close dialog"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {!isUpdating && !isRestarting && (
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-full transition-colors"
+              title="Close dialog"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
 
           <div className="flex items-center gap-3 mb-2">
             <span className="p-2 bg-white/15 rounded-xl backdrop-blur-sm">
@@ -94,8 +190,94 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
-          {/* Asset Download Card */}
-          {updateData.download_url && (
+          {/* In-Place Update Progress Card (Active Update State) */}
+          {isUpdating || isRestarting ? (
+            <div className="p-5 bg-gradient-to-br from-indigo-50/70 to-blue-50/70 border border-indigo-200 rounded-xl space-y-3.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-indigo-600 text-white rounded-lg shadow-sm">
+                    {isRestarting ? (
+                      <RotateCcw className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-slate-800">
+                      {isRestarting
+                        ? 'Restarting Application...'
+                        : progress?.status === 'extracting'
+                        ? 'Extracting Package Files...'
+                        : 'Downloading Silent Update...'}
+                    </div>
+                    <div className="text-xs text-slate-600">
+                      {isRestarting
+                        ? 'Applying new files and restarting. Browser will reconnect in seconds...'
+                        : progress?.message || 'Preparing update files...'}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-xs font-mono font-bold text-indigo-700 bg-indigo-100/80 px-2.5 py-1 rounded-md">
+                  {isRestarting ? '100%' : `${progress?.progress_percent || 0}%`}
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="w-full bg-slate-200/80 rounded-full h-3 overflow-hidden p-0.5 border border-slate-300/50">
+                <div
+                  className="bg-gradient-to-r from-indigo-600 to-primary-500 h-full rounded-full transition-all duration-300 ease-out shadow-sm"
+                  style={{
+                    width: `${isRestarting ? 100 : Math.max(3, progress?.progress_percent || 0)}%`,
+                  }}
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono">
+                <span>
+                  {progress?.downloaded_mb
+                    ? `${progress.downloaded_mb} MB / ${progress.total_mb} MB`
+                    : 'Target package: ~124 MB'}
+                </span>
+                <span className="text-indigo-600 font-medium">
+                  {isRestarting ? 'Finalizing in-place upgrade' : 'Zero-touch automated update'}
+                </span>
+              </div>
+            </div>
+          ) : progress?.status === 'failed' ? (
+            /* Error Card */
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-rose-800 font-semibold text-xs">
+                <AlertTriangle className="w-4 h-4 text-rose-500" />
+                <span>Auto-Update Failed</span>
+              </div>
+              <p className="text-xs text-rose-700">
+                {progress.error || 'The update package could not be downloaded or extracted.'}
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleStartInPlaceUpdate}
+                  className="flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Retry Auto-Update</span>
+                </Button>
+                {updateData.download_url && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleDownload}
+                    className="flex items-center gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download Manually</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Idle Ready Card */
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-primary-100 text-primary-700 rounded-lg">
@@ -103,21 +285,25 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                 </div>
                 <div>
                   <div className="text-sm font-semibold text-slate-800">
-                    {updateData.asset_name || 'Software Release Package'}
+                    {updateData.asset_name || `CAP_Portal-${updateData.latest_version}.zip`}
                   </div>
                   <div className="text-xs text-slate-500">
-                    {updateData.asset_size_mb ? `${updateData.asset_size_mb} MB` : 'Windows Desktop Build / Update Archive'}
+                    {updateData.asset_size_mb
+                      ? `${updateData.asset_size_mb} MB`
+                      : 'Windows Desktop Build / Update Archive'}
                   </div>
                 </div>
               </div>
-              <Button
-                variant="primary"
-                onClick={handleDownload}
-                className="flex items-center gap-1.5 shadow-sm"
-              >
-                <Download className="w-4 h-4" />
-                <span>Download</span>
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="primary"
+                  onClick={handleStartInPlaceUpdate}
+                  className="flex items-center gap-1.5 shadow-sm bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-700 hover:to-indigo-700 text-white"
+                >
+                  <Zap className="w-4 h-4 text-amber-300" />
+                  <span>Update & Restart</span>
+                </Button>
+              </div>
             </div>
           )}
 
@@ -148,24 +334,34 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
               <ExternalLink className="w-3.5 h-3.5" />
               <span>View Release on GitHub</span>
             </button>
-          ) : <div />}
+          ) : (
+            <div />
+          )}
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-lg transition-colors"
-            >
-              Remind Me Later
-            </button>
-            {updateData.download_url && (
-              <Button
-                variant="primary"
-                onClick={handleDownload}
-                className="flex items-center gap-2"
-              >
-                <Download className="w-4 h-4" />
-                <span>Download ZIP ({updateData.asset_size_mb || 'Full'} MB)</span>
-              </Button>
+            {!isUpdating && !isRestarting && (
+              <>
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-lg transition-colors"
+                >
+                  Remind Me Later
+                </button>
+                {updateData.download_url && (
+                  <button
+                    onClick={handleDownload}
+                    className="text-xs text-slate-500 hover:text-primary-600 underline font-medium"
+                    title="Download ZIP package manually"
+                  >
+                    Download ZIP Manually
+                  </button>
+                )}
+              </>
+            )}
+            {isRestarting && (
+              <span className="text-xs text-indigo-600 font-medium animate-pulse">
+                Please wait, restarting...
+              </span>
             )}
           </div>
         </div>
