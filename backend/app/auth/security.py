@@ -78,8 +78,9 @@ def get_current_admin(request: Request, db: Session = Depends(get_db)) -> AdminU
             detail="Not authenticated"
         )
 
+    token = token.strip().strip('"\'')
     if token.startswith("Bearer "):
-        token = token[7:].strip()
+        token = token[7:].strip().strip('"\'')
 
     payload = decode_access_token(token)
     if not payload:

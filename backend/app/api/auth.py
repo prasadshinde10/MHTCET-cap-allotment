@@ -87,12 +87,15 @@ def login(
     db.refresh(user)
 
     access_token = create_access_token(data={"sub": user.username})
+
+    # In production over HTTPS (or Behind Cloudflare/SSL proxy), set Secure. On localhost/HTTP desktop exe, allow HTTP cookie.
+    is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     response.set_cookie(
         key="access_token",
         value=f"Bearer {access_token}",
         httponly=True,
-        samesite="none" if settings.APP_ENV == "production" else "lax",
-        secure=True if settings.APP_ENV == "production" else False,
+        samesite="lax" if not is_https else "none",
+        secure=is_https,
         max_age=settings.JWT_EXPIRY_HOURS * 3600,
     )
 
@@ -119,10 +122,11 @@ def logout(
     db: Session = Depends(get_db),
     current_admin: AdminUser = Depends(get_current_admin),
 ):
+    is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     response.delete_cookie(
         key="access_token",
-        samesite="none" if settings.APP_ENV == "production" else "lax",
-        secure=True if settings.APP_ENV == "production" else False,
+        samesite="lax" if not is_https else "none",
+        secure=is_https,
     )
     log_audit(
         db, "LOGOUT", "AdminUser", current_admin.id,
