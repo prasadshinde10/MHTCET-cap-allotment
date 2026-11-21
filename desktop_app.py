@@ -26,6 +26,8 @@ if BASE_DIR not in sys.path:
 # Set production environment defaults if not set
 os.environ.setdefault("APP_ENV", "production")
 os.environ.setdefault("PORT", "8000")
+os.environ["IS_DESKTOP_STANDALONE"] = "1"
+os.environ["APP_RUNTIME"] = "desktop"
 
 # Ensure desktop uses local SQLite cutoff.db by default
 if "DATABASE_URL" not in os.environ or "postgresql" in os.environ.get("DATABASE_URL", ""):
@@ -38,17 +40,46 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("desktop_app")
 
 
-def find_available_port(default_port: int = 8000, max_attempts: int = 10) -> int:
-    """Finds an available TCP port starting from default_port."""
+def create_server_socket(host: str = "127.0.0.1", port: int = 8000) -> socket.socket:
+    """Creates a bound listening socket, falling back to dual-stack IPv6 if IPv4 bind fails."""
+    if ":" not in host:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, "SO_REUSEPORT"):
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            sock.bind((host, port))
+            sock.listen(128)
+            sock.set_inheritable(True)
+            return sock
+        except OSError:
+            sock.close()
+    sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    if hasattr(socket, "SO_REUSEPORT"):
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+    sock.bind(('::', port))
+    sock.listen(128)
+    sock.set_inheritable(True)
+    return sock
+
+
+def bind_available_socket(default_port: int = 8000, max_attempts: int = 10) -> tuple[socket.socket, int]:
+    """Finds and binds an available TCP socket starting from default_port, returning (socket, port)."""
     for p in range(default_port, default_port + max_attempts):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            if s.connect_ex(("127.0.0.1", p)) != 0:
-                return p
-    return default_port
+        try:
+            sock = create_server_socket("127.0.0.1", p)
+            return sock, p
+        except Exception:
+            continue
+    return create_server_socket("127.0.0.1", default_port), default_port
 
 
 def open_browser(url: str, delay_seconds: float = 1.2):
     """Opens the user's default browser after the server has bound the port."""
+    if os.environ.get("NO_BROWSER", "").lower() in ("1", "true", "yes"):
+        return
     time.sleep(delay_seconds)
     logger.info(f"Opening browser at: {url}")
     try:
@@ -77,8 +108,8 @@ def main():
     except Exception as e:
         logger.warning(f"Database initialization note: {e}")
 
-    # Determine port
-    port = find_available_port(8000)
+    # Determine port and bind socket
+    sock, port = bind_available_socket(8000)
     url = f"http://localhost:{port}"
 
     print(f"\n-> Server starting at: {url}")
@@ -93,18 +124,12 @@ def main():
         import uvicorn
         from app.main import app
 
-        uvicorn.run(
-            app,
-            host="127.0.0.1",
-            port=port,
-            log_level="info",
-            access_log=False,
-        )
+        cfg = uvicorn.Config(app, log_level="info", access_log=False)
+        uvicorn.Server(cfg).run(sockets=[sock])
     except KeyboardInterrupt:
         print("\nShutting down portal. Goodbye!")
     except Exception as e:
         logger.critical(f"Server error: {e}", exc_info=True)
-        input("\nPress Enter to exit...")
 
 
 if __name__ == "__main__":

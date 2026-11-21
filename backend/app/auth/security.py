@@ -104,3 +104,28 @@ def get_current_admin(request: Request, db: Session = Depends(get_db)) -> AdminU
         )
 
     return user
+
+
+def get_optional_admin(request: Request, db: Session = Depends(get_db)) -> AdminUser | None:
+    token = request.cookies.get("access_token")
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header:
+            token = auth_header
+
+    if not token:
+        return None
+
+    token = token.strip().strip('"\'')
+    if token.startswith("Bearer "):
+        token = token[7:].strip().strip('"\'')
+
+    payload = decode_access_token(token)
+    if not payload:
+        return None
+
+    username: str | None = payload.get("sub")
+    if username is None:
+        return None
+
+    return db.query(AdminUser).filter(AdminUser.username == username).first()

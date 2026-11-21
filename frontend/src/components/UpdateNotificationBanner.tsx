@@ -15,14 +15,16 @@ export const UpdateNotificationBanner: React.FC = () => {
     retry: 1,
   });
 
-  if (!updateData || !updateData.update_available || isDismissed) {
-    return (
+  // Update banner is strictly for Desktop Standalone offline users.
+  // Web edition is managed centrally and does not prompt web users with update banners.
+  if (!updateData || !updateData.update_available || !updateData.is_desktop || isDismissed) {
+    return isModalOpen ? (
       <UpdateModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         updateData={updateData || null}
       />
-    );
+    ) : null;
   }
 
   const sessionDismissKey = `dismissed_update_${updateData.latest_version}`;

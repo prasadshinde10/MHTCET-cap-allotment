@@ -9,7 +9,7 @@ import math
 import re
 
 from app.database import get_db
-from app.auth.security import get_current_admin
+from app.auth.security import get_current_admin, get_optional_admin
 from app.models import Cutoff, College, Course, CapRound, ManualCorrection
 from app.schemas.cutoffs import CutoffListItem, CutoffDetail, CutoffUpdate, ManualCorrectionItem
 from app.schemas.common import PaginatedResponse, PaginationParams
@@ -249,6 +249,7 @@ def get_cutoff_query(
     return stmt
 
 
+@router.get("", response_model=PaginatedResponse[CutoffListItem])
 @router.get("/", response_model=PaginatedResponse[CutoffListItem])
 def list_cutoffs(
     page: int = Query(1, ge=1),
@@ -276,7 +277,7 @@ def list_cutoffs(
     college_type: Optional[str] = None,
     funding_type: Optional[str] = None,
     db: Session = Depends(get_db),
-    admin=Depends(get_current_admin)
+    admin=Depends(get_optional_admin)
 ):
     # Ensure int even if called directly outside FastAPI
     page = int(page.default if hasattr(page, 'default') else page)
@@ -373,7 +374,7 @@ def export_cutoffs(
     college_type: Optional[str] = None,
     funding_type: Optional[str] = None,
     db: Session = Depends(get_db),
-    admin=Depends(get_current_admin)
+    admin=Depends(get_optional_admin)
 ):
     stmt = get_cutoff_query(
         db=db,
@@ -454,7 +455,7 @@ def export_cutoffs(
 def get_cutoff(
     cutoff_id: int,
     db: Session = Depends(get_db),
-    admin=Depends(get_current_admin)
+    admin=Depends(get_optional_admin)
 ):
     stmt = select(Cutoff, College, Course, CapRound)\
         .join(Course, Course.id == Cutoff.course_id)\

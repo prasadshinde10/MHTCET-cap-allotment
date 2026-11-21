@@ -54,8 +54,8 @@ export const Topbar: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-3">
-          {/* Update Available Quick Button */}
-          {updateData?.update_available && (
+          {/* Update Available Quick Button (Desktop Standalone only) */}
+          {updateData?.update_available && updateData?.is_desktop && (
             <button
               onClick={() => setShowUpdateModal(true)}
               className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-full transition-colors shadow-xs"

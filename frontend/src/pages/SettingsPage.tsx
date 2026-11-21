@@ -41,6 +41,7 @@ export function SettingsPage() {
   });
 
   const effectiveUpdate = activeUpdateData || updateData;
+  const isDesktop = effectiveUpdate?.is_desktop ?? data?.is_desktop ?? false;
 
   if (isLoading) return <div className="p-8 flex justify-center"><Spinner /></div>;
   if (!data) return <div className="p-8 text-center text-red-500">Failed to load system settings</div>;
@@ -65,12 +66,41 @@ export function SettingsPage() {
               <div className="flex items-center justify-between pb-3 border-b border-gray-100">
                 <span className="text-xs text-gray-500 font-medium">Installed Version</span>
                 <span className="font-mono text-sm font-bold text-gray-900 bg-gray-100 px-2 py-0.5 rounded">
-                  v{data.app_version || '1.0.0'}
+                  v{data.app_version || '1.3.0'}
                 </span>
               </div>
 
               {/* Status Box */}
-              {isUpdateLoading || checkMutation.isPending ? (
+              {!isDesktop ? (
+                // Web Edition: Server-managed deployment
+                <div className="space-y-3">
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
+                    <div className="flex items-center gap-2.5">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                      <div>
+                        <div className="text-xs font-bold text-emerald-900">Web Edition — Up to Date</div>
+                        <div className="text-[11px] text-emerald-700">Running latest server release.</div>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-500 pt-1 border-t border-emerald-200/60 leading-relaxed">
+                      Web deployments are maintained on the host server. Standalone executable download packages are reserved for offline Windows installations.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => checkMutation.mutate()}
+                      isLoading={checkMutation.isPending}
+                      className="w-full flex items-center justify-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Check Latest Release Notes</span>
+                    </Button>
+                  </div>
+                </div>
+              ) : isUpdateLoading || checkMutation.isPending ? (
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-3">
                   <Spinner className="w-4 h-4 text-primary-600" />
                   <span className="text-xs text-slate-600">Checking GitHub releases...</span>
@@ -114,19 +144,21 @@ export function SettingsPage() {
                 </div>
               )}
 
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2 pt-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => checkMutation.mutate()}
-                  isLoading={checkMutation.isPending}
-                  className="w-full flex items-center justify-center gap-1.5"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Check for Updates</span>
-                </Button>
-              </div>
+              {/* Action Buttons for Desktop */}
+              {isDesktop && (
+                <div className="flex items-center gap-2 pt-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => checkMutation.mutate()}
+                    isLoading={checkMutation.isPending}
+                    className="w-full flex items-center justify-center gap-1.5"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Check for Updates</span>
+                  </Button>
+                </div>
+              )}
 
               {effectiveUpdate?.release_url && (
                 <div className="text-center pt-1">
@@ -151,7 +183,7 @@ export function SettingsPage() {
             <dl className="divide-y divide-gray-100 text-sm">
               <div className="py-2.5 flex justify-between">
                 <dt className="font-medium text-gray-500">App Version</dt>
-                <dd className="font-mono text-gray-900">{data.app_version || '1.0.0'}</dd>
+                <dd className="font-mono text-gray-900">{data.app_version || '1.3.0'}</dd>
               </div>
               <div className="py-2.5 flex justify-between">
                 <dt className="font-medium text-gray-500">Parser Engine Version</dt>
@@ -159,7 +191,9 @@ export function SettingsPage() {
               </div>
               <div className="py-2.5 flex justify-between">
                 <dt className="font-medium text-gray-500">Environment</dt>
-                <dd className="text-gray-900 capitalize">Desktop Standalone (SQLite)</dd>
+                <dd className="text-gray-900 font-medium capitalize">
+                  {data.environment_name || (isDesktop ? 'Desktop Standalone (SQLite)' : 'Web Edition')}
+                </dd>
               </div>
               <div className="py-2.5 flex justify-between">
                 <dt className="font-medium text-gray-500">Last Import Timestamp</dt>

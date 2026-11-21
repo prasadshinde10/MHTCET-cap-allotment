@@ -4,6 +4,8 @@ export interface UpdateCheckResult {
   current_version: string;
   latest_version: string;
   update_available: boolean;
+  is_desktop?: boolean;
+  runtime_mode?: string;
   release_title?: string | null;
   release_notes?: string | null;
   published_at?: string | null;

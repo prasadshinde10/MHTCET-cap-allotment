@@ -25,6 +25,7 @@ class MedicalFilterOptions(BaseModel):
     courses: List[MedicalCourseItem]
     college_types: List[str]
     categories: List[str]
+    special_categories: Optional[List[str]] = []
     quotas: List[str]
     states: Optional[List[str]] = []
     cities: Optional[List[str]] = []

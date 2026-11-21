@@ -23,6 +23,7 @@ export interface MedicalFilterOptions {
   courses: MedicalCourseItem[];
   college_types: string[];
   categories: string[];
+  special_categories?: string[];
   quotas: string[];
   states?: string[];
   cities?: string[];
@@ -73,8 +74,10 @@ export interface MedicalCutoffParams {
   state?: string;
   city?: string;
   category?: string;
+  special_category?: string;
   quota?: string;
   gender?: string;
+  include_unreserved?: boolean;
   student_rank?: number;
   student_score?: number;
   rank_tolerance?: number;

@@ -6,6 +6,9 @@ import urllib.error
 from typing import Optional, Dict, Any
 from app.config import get_settings
 
+import os
+import sys
+
 # In-memory cache for GitHub release checks (30 minutes TTL)
 _UPDATE_CACHE: Dict[str, Any] = {
     "data": None,
@@ -15,6 +18,19 @@ _UPDATE_CACHE: Dict[str, Any] = {
 
 GITHUB_REPO = "prasadshinde10/MHTCET-cap-allotment"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+
+
+def is_desktop_runtime() -> bool:
+    """
+    Returns True if the application is running as a desktop standalone executable
+    or desktop runner (e.g. PyInstaller bundle or desktop_app.py), and False if running
+    as a standard web server / cloud deployment.
+    """
+    return (
+        getattr(sys, "frozen", False)
+        or os.environ.get("IS_DESKTOP_STANDALONE", "").lower() in ("1", "true", "yes")
+        or os.environ.get("APP_RUNTIME", "").lower() == "desktop"
+    )
 
 
 def parse_semver(v_str: str) -> tuple:
@@ -36,15 +52,19 @@ def check_github_releases(force_refresh: bool = False) -> Dict[str, Any]:
     """
     now = time.time()
     settings = get_settings()
-    current_version_str = getattr(settings, "APP_VERSION", "1.0.0")
+    current_version_str = getattr(settings, "APP_VERSION", "1.2.0")
     current_semver = parse_semver(current_version_str)
+    is_desktop = is_desktop_runtime()
+    runtime_mode = "desktop" if is_desktop else "web"
 
     if not force_refresh and _UPDATE_CACHE["data"] and (now - _UPDATE_CACHE["timestamp"] < _UPDATE_CACHE["ttl_seconds"]):
         cached = _UPDATE_CACHE["data"].copy()
-        # Recalculate update_available in case app_version changed
+        # Recalculate update_available in case app_version changed or runtime differs
         latest_semver = parse_semver(cached.get("latest_version", "0.0.0"))
         cached["current_version"] = current_version_str
-        cached["update_available"] = latest_semver > current_semver
+        cached["is_desktop"] = is_desktop
+        cached["runtime_mode"] = runtime_mode
+        cached["update_available"] = (latest_semver > current_semver) if is_desktop else False
         return cached
 
     req = urllib.request.Request(
@@ -62,7 +82,9 @@ def check_github_releases(force_refresh: bool = False) -> Dict[str, Any]:
                 
                 tag_name = raw_data.get("tag_name", "")
                 latest_semver = parse_semver(tag_name)
-                update_available = latest_semver > current_semver
+                # Desktop installations check for newer release packages to update in place.
+                # Web edition is maintained centrally and does not prompt web users to download updates.
+                update_available = (latest_semver > current_semver) if is_desktop else False
 
                 # Find the primary desktop download asset (.zip or .exe)
                 assets = raw_data.get("assets", [])
@@ -90,6 +112,8 @@ def check_github_releases(force_refresh: bool = False) -> Dict[str, Any]:
                     "current_version": current_version_str,
                     "latest_version": tag_name,
                     "update_available": update_available,
+                    "is_desktop": is_desktop,
+                    "runtime_mode": runtime_mode,
                     "release_title": raw_data.get("name") or tag_name,
                     "release_notes": raw_data.get("body") or "",
                     "published_at": raw_data.get("published_at"),
@@ -121,13 +145,14 @@ def check_github_releases(force_refresh: bool = False) -> Dict[str, Any]:
         "current_version": current_version_str,
         "latest_version": current_version_str,
         "update_available": False,
+        "is_desktop": is_desktop,
+        "runtime_mode": runtime_mode,
         "release_title": None,
         "release_notes": None,
         "published_at": None,
         "release_url": f"https://github.com/{GITHUB_REPO}/releases",
         "download_url": None,
         "asset_name": None,
-        "asset_size_mb": None,
         "cached": False,
         "checked_at": int(now),
         "error": error_msg,

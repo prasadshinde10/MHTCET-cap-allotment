@@ -133,8 +133,8 @@ export const Sidebar: React.FC = () => {
 
       {/* User Info & Logout Footer */}
       <div className="flex-shrink-0 border-t border-slate-800 p-4 bg-slate-950/60">
-        {/* Update Notification Pill in Sidebar */}
-        {updateData?.update_available && (
+        {/* Update Notification Pill in Sidebar (Desktop Standalone only) */}
+        {updateData?.update_available && updateData?.is_desktop && (
           <button
             onClick={() => setShowUpdateModal(true)}
             className="w-full mb-3 px-3 py-2 bg-gradient-to-r from-amber-500/20 to-primary-500/20 hover:from-amber-500/30 hover:to-primary-500/30 border border-amber-400/40 rounded-lg text-left flex items-center justify-between transition-all group"

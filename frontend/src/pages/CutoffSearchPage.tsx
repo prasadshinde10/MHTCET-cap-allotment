@@ -114,7 +114,7 @@ export const CutoffSearchPage: React.FC = () => {
   });
   const [collegeType, setCollegeType] = useState<string>(searchParams.get('collegeType') || '');
   const [autonomyStatus, setAutonomyStatus] = useState<string>(searchParams.get('autonomy') || '');
-  const [casteCategory, setCasteCategory] = useState<string>(searchParams.get('category') || '');
+  const [casteCategory, setCasteCategory] = useState<string>((searchParams.get('category') || '').toUpperCase());
   const [reservationType, setReservationType] = useState<string>(searchParams.get('reservation') || '');
   const [gender, setGender] = useState<string>(searchParams.get('gender') || '');
   const [selectedDistricts, setSelectedDistricts] = useState<string[]>(() => {
@@ -406,13 +406,14 @@ export const CutoffSearchPage: React.FC = () => {
 
       // No special reservation:
       if (casteCategory) {
+        const cat = casteCategory.toUpperCase();
         if (gender === 'ladies') {
-          return `L${casteCategory}`;
+          return `L${cat}`;
         } else if (gender === 'general') {
-          return `G${casteCategory}`;
+          return `G${cat}`;
         } else {
           // All Types: query both General and Ladies seats
-          return `G${casteCategory},L${casteCategory}`;
+          return `G${cat},L${cat}`;
         }
       }
 
@@ -442,7 +443,7 @@ export const CutoffSearchPage: React.FC = () => {
 
     if (reservationType === 'DEF') {
       const defCode = casteCategory ? `DEF%${casteCategory}` : 'DEF';
-      if (casteCategory && casteCategory !== 'OPEN') {
+      if (casteCategory && casteCategory.toUpperCase() !== 'OPEN') {
         return includeLadies
           ? `${defCode},L${casteCategory},G${casteCategory},LOPEN,GOPEN`
           : `${defCode},G${casteCategory},GOPEN`;
@@ -452,7 +453,7 @@ export const CutoffSearchPage: React.FC = () => {
 
     if (reservationType === 'PWD') {
       const pwdCode = casteCategory ? `PWD%${casteCategory}` : 'PWD';
-      if (casteCategory && casteCategory !== 'OPEN') {
+      if (casteCategory && casteCategory.toUpperCase() !== 'OPEN') {
         return includeLadies
           ? `${pwdCode},L${casteCategory},G${casteCategory},LOPEN,GOPEN`
           : `${pwdCode},G${casteCategory},GOPEN`;
@@ -465,7 +466,7 @@ export const CutoffSearchPage: React.FC = () => {
     }
 
     // Standard caste category (reservationType === ''):
-    if (casteCategory && casteCategory !== 'OPEN') {
+    if (casteCategory && casteCategory.toUpperCase() !== 'OPEN') {
       return includeLadies
         ? `L${casteCategory},G${casteCategory},LOPEN,GOPEN`
         : `G${casteCategory},GOPEN`;
