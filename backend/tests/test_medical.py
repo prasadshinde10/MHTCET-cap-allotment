@@ -110,3 +110,40 @@ def test_medical_upload_and_progress():
     prog_resp = client.get("/api/medical/upload/progress/non_existent_task_id")
     assert prog_resp.status_code == 404
 
+
+def test_medical_normalized_state_filters():
+    # 1. Def-1 unifies D1 and DEF1
+    d1_resp = client.get("/api/medical/cutoffs?counselling_type=state&defence_quota=def1")
+    assert d1_resp.status_code == 200
+    d1_data = d1_resp.json()
+    assert d1_data["total"] == 250
+    d1_quotas = set(item["quota_category"] for item in d1_data["items"])
+    assert d1_quotas.issubset({"D1", "DEF1"})
+
+    # 2. Def-2 unifies D2 and DEF2
+    d2_resp = client.get("/api/medical/cutoffs?counselling_type=state&defence_quota=def2")
+    assert d2_resp.status_code == 200
+    d2_data = d2_resp.json()
+    assert d2_data["total"] == 212
+    d2_quotas = set(item["quota_category"] for item in d2_data["items"])
+    assert d2_quotas.issubset({"D2", "DEF2"})
+
+    # 3. All Defence unifies all 6 subcategories
+    def_all_resp = client.get("/api/medical/cutoffs?counselling_type=state&defence_quota=all_def")
+    assert def_all_resp.status_code == 200
+    def_all_data = def_all_resp.json()
+    assert def_all_data["total"] == 636
+
+    # 4. Illogical combination (Defence + Caste) returns 0 results
+    ill_resp = client.get("/api/medical/cutoffs?counselling_type=state&defence_quota=def1&category=OBC")
+    assert ill_resp.status_code == 200
+    assert ill_resp.json()["total"] == 0
+
+    # 5. Hilly Area (HA) combined with Caste (OBC)
+    ha_resp = client.get("/api/medical/cutoffs?counselling_type=state&hilly_area=only&category=OBC")
+    assert ha_resp.status_code == 200
+    ha_data = ha_resp.json()
+    assert ha_data["total"] > 0
+    ha_quotas = set(item["quota_category"] for item in ha_data["items"])
+    assert "HOBC" in ha_quotas
+

@@ -177,6 +177,8 @@ export const MedicalSearchPage: React.FC = () => {
   const cityParam = searchParams.get('city') || '';
   const categoryParam = searchParams.get('category') || '';
   const specialCategoryParam = searchParams.get('special_category') || '';
+  const defenceQuotaParam = searchParams.get('defence_quota') || '';
+  const hillyAreaParam = searchParams.get('hilly_area') || '';
   const quotaParam = searchParams.get('quota') || '';
   const genderParam = searchParams.get('gender') || '';
   const includeUnreservedParam = searchParams.get('include_unreserved') !== 'false';
@@ -254,6 +256,8 @@ export const MedicalSearchPage: React.FC = () => {
       city: cityParam || undefined,
       category: categoryParam || undefined,
       special_category: specialCategoryParam || undefined,
+      defence_quota: defenceQuotaParam || undefined,
+      hilly_area: hillyAreaParam || undefined,
       quota: quotaParam || undefined,
       gender: genderParam || undefined,
       include_unreserved: includeUnreservedParam,
@@ -265,7 +269,7 @@ export const MedicalSearchPage: React.FC = () => {
     };
   }, [
     counsellingParam, yearParam, roundParam, collegeParam, courseParam, collegeTypeParam,
-    stateParam, cityParam, categoryParam, specialCategoryParam, quotaParam, genderParam, includeUnreservedParam, rankParam, rankToleranceParam,
+    stateParam, cityParam, categoryParam, specialCategoryParam, defenceQuotaParam, hillyAreaParam, quotaParam, genderParam, includeUnreservedParam, rankParam, rankToleranceParam,
     pageParam, pageSizeParam, sortParam
   ]);
 
@@ -345,7 +349,8 @@ export const MedicalSearchPage: React.FC = () => {
 
   // Special reservation categories (State Medical)
   const specialCategoriesList = useMemo(() => {
-    return filterOptions?.special_categories || ['Defense', 'PwD / PH', 'MKB', 'Orphan', 'Minority', 'NRI / IQ', 'AIQ'];
+    const list = filterOptions?.special_categories || ['PwD / PH', 'MKB', 'Orphan', 'Minority', 'NRI / IQ', 'AIQ'];
+    return list.filter((c) => c !== 'Defense');
   }, [filterOptions]);
 
   // Grouped non-standard seat quotas for dropdown with optgroups
@@ -444,6 +449,26 @@ export const MedicalSearchPage: React.FC = () => {
         value: specialCategoryParam,
       });
     }
+    if (defenceQuotaParam) {
+      const defLabels: Record<string, string> = {
+        def1: 'Def-1 (Ex-Servicemen - D1/DEF1)',
+        def2: 'Def-2 (Active MH - D2/DEF2)',
+        def3: 'Def-3 (Active Outside MH - D3/DEF3)',
+        all_def: 'All Defence Quotas (Def 1, 2, 3)',
+      };
+      filters.push({
+        id: 'defence_quota',
+        label: 'Defence Quota',
+        value: defLabels[defenceQuotaParam] || defenceQuotaParam,
+      });
+    }
+    if (hillyAreaParam) {
+      filters.push({
+        id: 'hilly_area',
+        label: 'Hilly Area (HA)',
+        value: hillyAreaParam === 'only' ? 'Hilly Area Quota (3% HA)' : 'Regular Seats (No HA)',
+      });
+    }
     if (quotaParam) {
       filters.push({
         id: 'quota',
@@ -475,7 +500,7 @@ export const MedicalSearchPage: React.FC = () => {
     return filters;
   }, [
     yearParam, roundParam, stateParam, cityParam, selectedCourses, selectedColleges,
-    collegeTypeParam, categoryParam, specialCategoryParam, quotaParam, genderParam, rankParam, rankToleranceParam
+    collegeTypeParam, categoryParam, specialCategoryParam, defenceQuotaParam, hillyAreaParam, quotaParam, genderParam, rankParam, rankToleranceParam
   ]);
 
   const handleRemoveFilter = (filterId: string) => {
@@ -486,6 +511,8 @@ export const MedicalSearchPage: React.FC = () => {
     else if (filterId === 'college_type') updateQueryParam('type', null);
     else if (filterId === 'category') updateQueryParam('category', null);
     else if (filterId === 'special_category') updateQueryParam('special_category', null);
+    else if (filterId === 'defence_quota') updateQueryParam('defence_quota', null);
+    else if (filterId === 'hilly_area') updateQueryParam('hilly_area', null);
     else if (filterId === 'quota') updateQueryParam('quota', null);
     else if (filterId === 'gender') updateQueryParam('gender', null);
     else if (filterId === 'rank') {
@@ -1527,19 +1554,19 @@ export const MedicalSearchPage: React.FC = () => {
               </div>
             </div>
 
-            {/* State Reservation Category (Filter A), Special Category, Gender / Seat Type (Filter B), & Specific Quotas */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Filter A: Reservation Category */}
+            {/* State Quotas & Reservations: 5 Clean Dimensions (Caste, Defence, Hilly Area, Gender, Special) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+              {/* Dimension 1: Constitutional Category */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Reservation Category (Filter A)
+                  Constitutional Category
                 </label>
                 <select
                   value={categoryParam}
                   onChange={(e) => updateQueryParam('category', e.target.value || null)}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-500 shadow-xs"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs text-slate-800 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-500 shadow-xs"
                 >
-                  <option value="">All Reservation Categories</option>
+                  <option value="">All Categories (OPEN, OBC, SC...)</option>
                   {categoriesList.map((cat) => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
@@ -1552,12 +1579,71 @@ export const MedicalSearchPage: React.FC = () => {
                       onChange={(e) => updateQueryParam('include_unreserved', e.target.checked ? null : 'false')}
                       className="rounded border-slate-300 text-teal-600 focus:ring-teal-500 h-3.5 w-3.5"
                     />
-                    <span>Include Unreserved (OPEN) seats</span>
+                    <span>Include OPEN seats</span>
                   </label>
                 )}
               </div>
 
-              {/* Special Category Filter (Defense, PwD, MKB, Orphan, etc.) */}
+              {/* Dimension 2: Dedicated Defence Quota (Def-1, Def-2, Def-3, All) */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Defence Reservation
+                </label>
+                <select
+                  value={defenceQuotaParam}
+                  onChange={(e) => updateQueryParam('defence_quota', e.target.value || null)}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs text-slate-800 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-500 shadow-xs"
+                >
+                  <option value="">No Defence (General Candidates)</option>
+                  <option value="def1">Def-1: Ex-Servicemen (D1 / DEF1)</option>
+                  <option value="def2">Def-2: Active Service MH (D2 / DEF2)</option>
+                  <option value="def3">Def-3: Active Service Posted in MH (D3 / DEF3)</option>
+                  <option value="all_def">All Defence Seats (Def-1, 2, 3)</option>
+                </select>
+                <span className="block text-[10px] text-slate-400 mt-1">
+                  Unifies D1/DEF1, D2/DEF2, D3/DEF3
+                </span>
+              </div>
+
+              {/* Dimension 3: Dedicated Hilly Area Quota (HA - 3% Reservation) */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Hilly Area (HA - 3% Quota)
+                </label>
+                <select
+                  value={hillyAreaParam}
+                  onChange={(e) => updateQueryParam('hilly_area', e.target.value || null)}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs text-slate-800 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-500 shadow-xs"
+                >
+                  <option value="">All Seats (Default)</option>
+                  <option value="only">Hilly Area Quota Only (HA)</option>
+                  <option value="exclude">Regular Seats (Exclude HA)</option>
+                </select>
+                <span className="block text-[10px] text-slate-400 mt-1">
+                  Combines with Caste (HOBC, HSC...)
+                </span>
+              </div>
+
+              {/* Dimension 4: Seat Reservation / Gender */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Seat Reservation / Gender
+                </label>
+                <select
+                  value={genderParam}
+                  onChange={(e) => updateQueryParam('gender', e.target.value || null)}
+                  className="w-full bg-white border border-teal-300 rounded-lg px-2.5 py-2 text-xs text-teal-950 font-medium focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-500 shadow-xs"
+                >
+                  <option value="">All Seats (General & Women Quota)</option>
+                  <option value="general">General Seats (Open to All Candidates)</option>
+                  <option value="women">Women Quota Only (30% Horizontal Quota)</option>
+                </select>
+                <span className="block text-[10px] text-slate-400 mt-1">
+                  30% horizontal reservation
+                </span>
+              </div>
+
+              {/* Dimension 5: Special Category (PwD, MKB, Orphan, Minority, NRI) */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Special Category (Optional)
@@ -1565,80 +1651,55 @@ export const MedicalSearchPage: React.FC = () => {
                 <select
                   value={specialCategoryParam}
                   onChange={(e) => updateQueryParam('special_category', e.target.value || null)}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-500 shadow-xs"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs text-slate-800 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-500 shadow-xs"
                 >
                   <option value="">No Special Category</option>
                   {specialCategoriesList.map((sc) => (
                     <option key={sc} value={sc}>{sc}</option>
                   ))}
                 </select>
-              </div>
-
-              {/* Filter B: Seat Reservation / Gender */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Seat Reservation / Gender (Filter B)
-                </label>
-                <select
-                  value={genderParam}
-                  onChange={(e) => updateQueryParam('gender', e.target.value || null)}
-                  className="w-full bg-white border border-teal-300 rounded-lg px-3 py-2 text-sm text-teal-950 font-medium focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-500 shadow-xs"
-                >
-                  <option value="">All Seats (General & Women Quota)</option>
-                  <option value="general">General Seats (Open to All Candidates)</option>
-                  <option value="women">Women Quota Only (30% Horizontal Quota)</option>
-                </select>
-              </div>
-
-              {/* Specific Seat Quota (Non-standard / Irreducible Quotas) */}
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Specific Seat Quota (Optional)
-                </label>
-                <select
-                  value={quotaParam}
-                  onChange={(e) => updateQueryParam('quota', e.target.value || null)}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-500 shadow-xs"
-                >
-                  <option value="">All Specific Quotas ({filterOptions?.quotas?.length || 0} Quotas)</option>
-                  {groupedQuotas.defense.length > 0 && (
-                    <optgroup label="Defense Quotas (D1, D2, D3, DEF)">
-                      {groupedQuotas.defense.map((q) => (
-                        <option key={q} value={q}>{q}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {groupedQuotas.pwd.length > 0 && (
-                    <optgroup label="PwD / Physically Handicapped">
-                      {groupedQuotas.pwd.map((q) => (
-                        <option key={q} value={q}>{q}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {groupedQuotas.hill.length > 0 && (
-                    <optgroup label="Hilly Area Quota (H)">
-                      {groupedQuotas.hill.map((q) => (
-                        <option key={q} value={q}>{q}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {groupedQuotas.inService.length > 0 && (
-                    <optgroup label="In-Service Quota (EM)">
-                      {groupedQuotas.inService.map((q) => (
-                        <option key={q} value={q}>{q}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {groupedQuotas.other.length > 0 && (
-                    <optgroup label="Other Quotas">
-                      {groupedQuotas.other.map((q) => (
-                        <option key={q} value={q}>{q}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
+                <span className="block text-[10px] text-slate-400 mt-1">
+                  PwD, MKB, Orphan, Minority, NRI
+                </span>
               </div>
             </div>
+
+            {/* Contextual Warning Banner for Illogical Filter Combinations */}
+            {defenceQuotaParam && categoryParam && categoryParam !== 'OPEN' && (
+              <div className="flex items-center justify-between p-3 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 shadow-xs animate-in fade-in">
+                <div className="flex items-center gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <div>
+                    <span className="font-bold">Illogical Combination:</span> In Maharashtra State Medical counselling, Defence reservation (D1, D2, D3) is allocated on general merit across colleges and does not divide by caste. Selecting both Defence and <strong>{categoryParam}</strong> will yield 0 results.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updateQueryParam('category', null)}
+                  className="text-xs bg-white text-amber-800 hover:bg-amber-100 font-semibold px-2.5 py-1 rounded-md border border-amber-300 shrink-0 ml-3 shadow-xs"
+                >
+                  Clear Category
+                </button>
+              </div>
+            )}
+
+            {specialCategoryParam && specialCategoryParam !== 'PwD / PH' && categoryParam && categoryParam !== 'OPEN' && (
+              <div className="flex items-center justify-between p-3 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 shadow-xs animate-in fade-in">
+                <div className="flex items-center gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <div>
+                    <span className="font-bold">Illogical Combination:</span> <strong>{specialCategoryParam}</strong> quota is allocated as a general quota and does not combine with state caste reservations. Selecting both will yield 0 results.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updateQueryParam('category', null)}
+                  className="text-xs bg-white text-amber-800 hover:bg-amber-100 font-semibold px-2.5 py-1 rounded-md border border-amber-300 shrink-0 ml-3 shadow-xs"
+                >
+                  Clear Category
+                </button>
+              </div>
+            )}
           </div>
         )}
 

@@ -66,7 +66,7 @@ export function SettingsPage() {
               <div className="flex items-center justify-between pb-3 border-b border-gray-100">
                 <span className="text-xs text-gray-500 font-medium">Installed Version</span>
                 <span className="font-mono text-sm font-bold text-gray-900 bg-gray-100 px-2 py-0.5 rounded">
-                  v{data.app_version || '1.3.0'}
+                  v{data.app_version || '1.4.0'}
                 </span>
               </div>
 
@@ -183,7 +183,7 @@ export function SettingsPage() {
             <dl className="divide-y divide-gray-100 text-sm">
               <div className="py-2.5 flex justify-between">
                 <dt className="font-medium text-gray-500">App Version</dt>
-                <dd className="font-mono text-gray-900">{data.app_version || '1.3.0'}</dd>
+                <dd className="font-mono text-gray-900">{data.app_version || '1.4.0'}</dd>
               </div>
               <div className="py-2.5 flex justify-between">
                 <dt className="font-medium text-gray-500">Parser Engine Version</dt>

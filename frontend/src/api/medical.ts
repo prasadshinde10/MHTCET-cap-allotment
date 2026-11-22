@@ -75,6 +75,8 @@ export interface MedicalCutoffParams {
   city?: string;
   category?: string;
   special_category?: string;
+  defence_quota?: string;
+  hilly_area?: string;
   quota?: string;
   gender?: string;
   include_unreserved?: boolean;
@@ -139,6 +141,9 @@ export const getMedicalExportUrl = (params: MedicalCutoffParams): string => {
   if (params.state) searchParams.set('state', params.state);
   if (params.city) searchParams.set('city', params.city);
   if (params.category) searchParams.set('category', params.category);
+  if (params.special_category) searchParams.set('special_category', params.special_category);
+  if (params.defence_quota) searchParams.set('defence_quota', params.defence_quota);
+  if (params.hilly_area) searchParams.set('hilly_area', params.hilly_area);
   if (params.quota) searchParams.set('quota', params.quota);
   if (params.gender) searchParams.set('gender', params.gender);
   if (params.student_rank) searchParams.set('student_rank', params.student_rank.toString());
