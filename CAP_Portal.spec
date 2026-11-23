@@ -14,7 +14,8 @@ datas = [
 ]
 
 # Include SQLite database files from backend/ or root
-for db_name in ['cutoff.db', 'csab.db', 'josaa.db', 'medical.db', 'iiser.db']:
+for db_name in ['cutoff.db', 'csab.db', 'josaa.db', 'medical.db', 'iiser.db',
+                 'bits.db', 'medical_central.db', 'medical_state.db']:
     backend_db = os.path.join(BASE_DIR, 'backend', db_name)
     root_db = os.path.join(BASE_DIR, db_name)
     if os.path.exists(backend_db):

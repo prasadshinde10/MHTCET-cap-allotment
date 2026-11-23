@@ -12,9 +12,19 @@ logger = logging.getLogger(__name__)
 
 # Paths to dedicated medical databases (separate for Central MCC and State CET Cell)
 def get_medical_db_path(counselling_type: Optional[str] = None) -> Path:
+    import sys
     c_low = (counselling_type or "").lower().strip()
     is_state = c_low in ("state", "maha", "state_cet", "maharashtra")
     db_filename = "medical_state.db" if is_state else "medical_central.db"
+
+    # 0. PyInstaller bundle (_MEIPASS is set when running from frozen exe)
+    if hasattr(sys, '_MEIPASS'):
+        meipass_p = Path(sys._MEIPASS) / "backend" / db_filename
+        if meipass_p.exists():
+            return meipass_p
+        meipass_root = Path(sys._MEIPASS) / db_filename
+        if meipass_root.exists():
+            return meipass_root
 
     # 1. Current working directory
     cwd_p = Path.cwd() / db_filename
