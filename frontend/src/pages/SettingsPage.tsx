@@ -183,7 +183,7 @@ export function SettingsPage() {
             <dl className="divide-y divide-gray-100 text-sm">
               <div className="py-2.5 flex justify-between">
                 <dt className="font-medium text-gray-500">App Version</dt>
-                <dd className="font-mono text-gray-900">{data.app_version || '1.4.0'}</dd>
+                <dd className="font-mono text-gray-900">{data.app_version || '1.4.1'}</dd>
               </div>
               <div className="py-2.5 flex justify-between">
                 <dt className="font-medium text-gray-500">Parser Engine Version</dt>

@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # Application development
     APP_ENV: str = "production"
-    APP_VERSION: str = "1.4.0"
+    APP_VERSION: str = "1.4.1"
     PARSER_VERSION: str = "1.0.0"
     CORS_ORIGINS: List[str] = [
         "*",
